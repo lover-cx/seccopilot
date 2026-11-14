@@ -26,3 +26,8 @@
 （上游网络来源变空后 `search_results` 为 `[]`，即第 8 条缺陷）。文档引用的是"这一轮红在哪两条、数字是多少"，
 不是通过率承诺；要复核就照 `README.md` 的"30 秒复现"重跑同一命令，结果会随上游波动，
 这正是那两篇文档刻意只写逐轮红项、不写单点分数的原因。
+
+- 这些脚本的**输入留档不入库**（`dev/*` 被忽略，只有 `*.mjs`/`*.ts`/`README.md` 入库）。干净克隆里要先跑
+  `node dev/probe-kev-on-batch.mjs` 生成 `dev/kev-on-batch.json`，`node dev/check-kev-samples.mjs` 才会有非零样本；
+  直接跑 `check-kev-samples.mjs` 会打印"样本 0 次"，那不是"遵守率 0%"，是**没输入**。
+- 需要作为证据发布的留档一律写进 `docs/eval-archive/`（入库），不要留在 `dev/`。
