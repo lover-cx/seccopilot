@@ -190,7 +190,8 @@ Expected: 打印 `OK：没有真 .env 被追踪`；`git ls-files dev/` 共 16 �
 在 `docs/competition-post.md` 的"附：30 秒复现"小节末尾追加：
 
 ```markdown
-- 仓库若公开：先轮换 `data/.env` 里的 DashScope key（本目录已 gitignore，但历史提交风险要一次性堵死），
+- 仓库若公开：先轮换 `data/.env` 里的 DashScope key（该文件已被 .gitignore 排除、从未进过任何提交，
+  但历史提交风险要在公开前一次性堵死），
   并在 Sites 侧更新 `DASHSCOPE_API_KEY` Secret 后重新发布——密钥轮换会让旧 key 立刻失效，顺序不能反。
 ```
 
