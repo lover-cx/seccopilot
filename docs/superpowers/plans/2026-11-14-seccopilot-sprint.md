@@ -211,15 +211,32 @@ git add docs/competition-post.md && git commit -m "docs: 记录公开仓库前�
   两个网络来源是微博正文与乱码新华网链接，**这道旗标题线上答不好**"。**这句是错的，保留以自证。**
   它把一次 `mode:"on"` 抓取（`dev/online-kev-2026-11-14.json`，5 条来源全是 `keyword()` 兜底的 0.3 分、
   标题里一条都没有 21509，走 `!sufficient` 分支）当成了"检索命中但回答没用上"。那份留档恰恰说明检索**没**命中。
-- 探针实测（`docs/eval-archive/online-kev-2026-11-14.json`，`MODE=on` 共 9 行）：9/9 给出
-  `CVE-2026-21509 + 2026-01-26 + Security Feature Bypass`、9/9 `srcHasId` 真、9/9 `note` 是"充分"分支；
-  `N=3` 全绿后按扩样规则加到 6，仍 6/6 全绿。
-- 所以这条的真实性质是**线上非确定性**：同一 mode 当天既能给出零编号的"未覆盖"，也能 9 次全绿。
-  另有两处探针没判的东西必须一起记下：目录里 2026 年微软 Office 有 3 条，9 次回答**全部没提 `CVE-2026-21514`**；
+- 探针实测（`docs/eval-archive/online-kev-2026-11-14.json`）分两个 run，**引用时必须带上各自的 mode 与 runId，不得合并成一个"9 次"**：
+  - `legacy-2026-11-14`（6 行，请求体没带 `mode`，服务端 `normalizeMode` 归的是 `auto`，不是那条失败留档的 `on`；
+    `handler.ts:40-47` + `chat.ts:50`）：6/6 给出 `CVE-2026-21509 + 2026-01-26 + Security Feature Bypass`、6/6 `srcHasId` 真、
+    6/6 `note` 是"充分"分支。但按编号逐行数一次，**`CVE-2026-124194` 只出现在第 1、3、4、5 行（4/6）**，第 2、6 行压根没提它——
+    所以"这 6 次是靠网络那一侧把它补上的"这种整句归因是过度声明，必须写成 4/6。`CVE-2026-21514` **0/6**。
+    这 6 行是脚本"按日期覆盖写"之前的遗留：更早那 3 次已被同日第二次运行抹掉，所以库里能核的只有 6 行——
+    本轮把留档改成按 run 累加、默认 `MODE=on`，就是为了不再出现"引用一个核不到的数字"。
+  - `..._on_...`（2026-11-14 22:33 改造后重跑，`MODE=on`、`N=3`）：**ok 2/3、`okWithLocal` 1/3**、`srcHasId` 2/3、`21514 0/3`、`124194 2/3`。
+    三行各自的意义（这是今天第一次拿到"红行"，也是第一次把兜底路径钉成实测）：
+    ① 第 1 次：`note` 走 `chat.ts:356` 的 `!sufficient` 分支，5 条来源 `similarity` 全 0.3、标题是 Adobe Acrobat / MFA(T1556-006) /
+    Android / Apple / Android——**与入库反证样本 `online-kev-empty-retrieval-2026-11-14.json` 同一批关键词兜底条目**，
+    即"语义检索空集 → 兜底"这条路径**线上复现了（1/3）**；正文靠网络答对编号+日期+类型，现有 `ok` 判据把这次记**绿**。
+    ② 第 2 次：本地语义命中（5 条 0.74、标题含 21509），末句却写"当前知识库与网络检索均未覆盖2026年其他被确认在野利用的Office漏洞"
+    ——`DOWNGRADE` 抓住、判**红**。注意同一句里"CVE-2016-7193、CVE-2016-7262 的 KEV 收录时间均在 2022 年"我对着 2026.11.13 目录逐条核过，
+    两条 `dateAdded` 都是 `2022-03-03`：**这句是真的，文档里不得写成编造日期**；真问题是那句无来源支撑的全局否定（第 3 条缺陷同一类），
+    而当时目录里还有 21514 与 124194。③ 第 3 次：绿，且提到 124194。
+- 所以这条的真实性质是**线上非确定性 + 两种"判绿却不完整/无本地依据"的形态**，不是"每次都答不出来"：
+  `CVE-2026-21514` 在两个模式合计 **0/9** 从未被提到而判据照样绿；`ok` 不看 `srcHasId`，于是"本地一条没命中、全靠网络"也算覆盖。
+  另有两处必须一起记下：按 `dateAdded` 落在 2026 年、产品为 Office 的目录条目实际有 **5 条**
+  （124194 / 21514 / 21509 之外还有两条 2009 年编号的 0238、0556 是 2026 年才收录的），
+  按 CVE 编号年份算才是 3 条——写"3 条"必须同时写清用的是哪个口径，且数据源要能在仓库里核到
+  （`dev/kev-feed-cache.json` 被 gitignore，改由 `scripts/refresh-time-grounds.mjs`（Task 7）现查现数）；
   充分分支的 `note` 固定写着"网络来源未经知识库校验"，而线上跑的仍是加闸门之前的 prompt——**这两条在发布前后都别当成已解决**。
 
-不做这件事的后果：演示视频和作品帖都会点开这道题。它今天线上能给对，但我们无法解释为什么当天早些时候它给的是零编号，
-也无法保证录屏那一次不是那一次。没有可重跑的测量，第 9 条就只能写成一句印象。
+不做这件事的后果：演示视频和作品帖都会点开这道题。它线上大多能给对，但 22:33 那一轮里 3 次有 1 次本地检索彻底落空、
+1 次给出无来源支撑的全局否定，而前者在旧判据下是绿的。没有可重跑、可分 run 的测量，第 9 条就只能写成一句印象。
 
 **Files:**
 - Create: `scripts/probe-online-kev.mjs`
@@ -249,9 +266,17 @@ git add docs/competition-post.md && git commit -m "docs: 记录公开仓库前�
 // 留档按天累加：同一天第二次运行追加为新 run（runId 含时间、MODE、站点），绝不覆盖既有 run 的行。
 // 退出码：本次 run 有不合规 → 1。HTTP 非 200 / 非 JSON / HTML 响应都记成显式不合规行，不静默算通过。
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const SITE = (process.env.SITE ?? "https://seccopilot-kpa8w0w9u7e.qoder.zone").replace(/\/+$/, "");
+// N 必须显式校验：Number("") 是 0、Number("abc") 是 NaN、负数也能过，三者都让循环一次不跑，
+// 于是 ok===rows.length 为 0===0 → 退出码 0，一份"全绿"的空留档就这么进库了。
 const N = Number(process.env.N ?? 6);
+if (!Number.isInteger(N) || N < 1 || N > 50) {
+  console.error(`N 必须是 1~50 的整数（当前 N=${JSON.stringify(process.env.N)}）`);
+  process.exit(2);
+}
 const MODE = process.env.MODE ?? "on";                 // 直接进请求体，由服务端 normalizeMode 处理
 const Q = "2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？";
 const HEADERS = { Origin: SITE, Referer: `${SITE}/`, "Content-Type": "application/json" };
@@ -259,16 +284,23 @@ const ID = /CVE-2026-21509/i;
 const DATE = /2026[-/年]0?1[-/月]26/;                  // 2026-01-26 / 2026/01/26 / 2026年1月26日
 const TYPE = /Security Feature Bypass|安全功能绕过/i;
 // 降级说法要盖住"只说 NVD 收录、不说在野利用"这一类（线上 6 次里真出现过）。
-const DOWNGRADE = /资料未说明|未说明其在野利用|未在野利用|未明确标注|无公开|尚无|无法确认|未经\s*KEV|是否被利用(?:无法|不明)|知识库与网络检索均未覆盖|未覆盖/;
+const DOWNGRADE = /资料未说明|未说明其在野利用|未在野利用|未明确标注|未明确指出|未指明|无公开|尚无|无法确认|未经\s*KEV|是否被利用(?:无法|不明)|知识库与网络检索均未覆盖|未覆盖/;
 // 判据只到 21509（与 scripts/eval.mjs 一致）。这两条是观察项，不进退出码：
-// 目录里 2026 年微软 Office 实际有 3 条，回答漏了 21514 仍会判绿，所以必须逐行记下来。
+// 按 dateAdded 落在 2026 年、产品为 Office 的目录条目实际有 5 条（21509、21514、124194，外加两条 2026 年才收录的
+// 2009 编号 0238/0556），按 CVE 编号年份算才是 3 条。回答漏了 21514 或 124194 仍会判绿，所以必须逐行记下来。
 const WATCH = { "CVE-2026-21514": /CVE-2026-21514/i, "CVE-2026-124194": /CVE-2026-124194/i };
 
-const DAY = new Date().toISOString().slice(0, 10);
+// 日期按北京时区算，不用裸 toISOString()：那是 UTC，北京时间 11-15 01:00 跑会写成 11-14，
+// 与文档里"11-15 实测"对不上，而评测日与留档文件名必须同日可追。本项目全部留档文件名用的都是北京日期。
+const CN_NOW = () => new Date(Date.now() + 8 * 3600_000);   // 只用于打时间戳：+8 小时后取其 UTC 分量即北京时刻
+const DAY = CN_NOW().toISOString().slice(0, 10);
 // 默认写线上证据文件；打本机 harness 时必须用 OUT= 换文件——同一天把本机行并进线上文件，
-// 第 9 条的"线上 9/9 绿"就分不清哪几行是线上、哪几行是自己机器上改过代码之后的结果了。
-const OUT = process.env.OUT ?? `docs/eval-archive/online-kev-${DAY}.json`;
-const RUN_ID = `${new Date().toISOString().replace(/[:.]/g, "-")}_${MODE}_${SITE.replace(/^\w+:\/\//, "").replace(/\W+/g, "-")}`;
+// 第 9 条的"线上 6/6 绿"就分不清哪几行是线上、哪几行是自己机器上改过代码之后的结果了。
+// 路径锚到仓库根（脚本所在目录的上一级），不看 cwd：在子目录里裸跑会把留档写到别处，
+// 相对 OUT= 同理；给了 OUT= 也按仓库根解析，除非它本身是绝对路径。
+const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
+const OUT = resolve(REPO_ROOT, process.env.OUT ?? `docs/eval-archive/online-kev-${DAY}.json`);
+const RUN_ID = `${CN_NOW().toISOString().replace(/[:.]/g, "-")}_${MODE}_${SITE.replace(/^\w+:\/\//, "").replace(/\W+/g, "-")}`;
 
 const rows = [];
 for (let i = 0; i < N; i++) {
@@ -316,9 +348,10 @@ for (let i = 0; i < N; i++) {
 // 直接按 prev.runs ?? [] 读会把它们静默丢掉，那等于用新脚本删掉了第 9 条唯一引用的证据文件内容。
 const prev = existsSync(OUT) ? JSON.parse(readFileSync(OUT, "utf-8")) : { site: SITE, q: Q, runs: [] };
 const pass = (rs) => rs.filter((r) => r.hasId && r.hasDate && r.hasType && !r.degraded).length;
+const passLocal = (rs) => rs.filter((r) => r.srcHasId && r.hasId && r.hasDate && r.hasType && !r.degraded).length;
 const legacy = Array.isArray(prev.rows) && prev.rows.length
   ? [{ runId: `legacy-${DAY}`, mode: prev.mode ?? "unrecorded", site: prev.site ?? SITE,
-       ok: pass(prev.rows), total: prev.rows.length,
+       ok: pass(prev.rows), okWithLocal: passLocal(prev.rows), total: prev.rows.length,
        srcHasId: prev.rows.filter((r) => r.srcHasId).length,
        watch: Object.fromEntries(Object.keys(WATCH).map((k) =>
          [k, prev.rows.filter((r) => WATCH[k].test(String(r.answer ?? ""))).length])),
@@ -327,13 +360,23 @@ const legacy = Array.isArray(prev.rows) && prev.rows.length
 const runs = [...(prev.runs ?? []), ...legacy].filter((x) => x.runId !== RUN_ID);
 const ok = pass(rows);
 const retrievalOk = rows.filter((r) => r.srcHasId).length;
+// okWithLocal 才是"本地知识库覆盖"这个数字：ok 只看正文有没有编号/日期/类型/降级措辞，
+// 2026-11-14 22:33 线上 mode=on 第 1 次实测就是"5 条来源全是 0.3 关键词兜底、一条不是 Office"而正文靠网络答对 → 记绿。
+// 若不与 ok 并排给出，探针就会把"检索失败但网络兜住"读成没问题——下一次兜不住时我们看不见。
+const okWithLocal = rows.filter((r) => r.srcHasId && r.hasId && r.hasDate && r.hasType && !r.degraded).length;
+// 错误行必须单独计数并进摘要：HTTP 非 200 / 非 JSON / 网络异常都算 badResponse，
+// 它们已经让 ok < rows.length 从而退出码 1，但若摘要只说"3/6 次合规"，读的人会以为剩下 3 次是降级回答，
+// 而不是"根本没打通"——这两种情况的处置完全不同。
+const bad = rows.filter((r) => r.badResponse).length;
 runs.push({ runId: RUN_ID, mode: MODE, site: SITE, startedAt: new Date().toISOString(),
-            ok, total: rows.length, srcHasId: retrievalOk,
+            ok, okWithLocal, total: rows.length, bad, srcHasId: retrievalOk,
             watch: Object.fromEntries(Object.keys(WATCH).map((k) =>
               [k, rows.filter((r) => r.watch?.[k]).length])), rows });
 writeFileSync(OUT, JSON.stringify({ site: SITE, q: Q, runs }, null, 1), "utf-8");
-console.log(`\n${SITE} mode=${MODE}：${ok}/${rows.length} 次给出「编号 + 收录日期 + 类型」且未降级；`
-  + `${retrievalOk}/${rows.length} 次的来源标题里本来就有 CVE-2026-21509；`
+console.log(`\n${SITE} mode=${MODE}：${ok}/${rows.length} 次给出「编号 + 收录日期 + 类型」且未降级，`
+  + `其中 ${okWithLocal}/${rows.length} 次的来源标题里本来就有 CVE-2026-21509（"本地有据可引"才是知识库覆盖，`
+  + `ok 与 okWithLocal 的差 = 全靠网络兜住的次数）；`
+  + `接口异常 ${bad}/${rows.length} 次（HTTP 非 200 / 非 JSON / 抛错）；`
   + `观察项 21514 ${runs.at(-1).watch["CVE-2026-21514"]}/${rows.length}、124194 ${runs.at(-1).watch["CVE-2026-124194"]}/${rows.length}。`);
 console.log(`留档：${OUT}（本次 runId=${RUN_ID}，文件内共 ${runs.length} 个 run）`);
 process.exit(ok === rows.length ? 0 : 1);
@@ -369,27 +412,44 @@ Expected（改造前）：`shape=rows runs=0 rows=6`；Expected（新脚本跑�
 在 `docs/competition-post.md` 第六节末尾追加一条。**这里不提供现成文案**（第一版提供了，而那版是假的），
 必须满足以下几条，逐条都能对着 `docs/eval-archive/` 里的文件核：
 
-- 并存的两件事都要写：线上 `mode=on` 连跑 9 次全绿；当天早些时候同一 `mode` 的一条留档是零编号。结论是**非确定性**，不是稳定退化。
+- 并存的两件事都要写，且**各自带上 `mode` 与代码分支**：入库那 6 行的请求体没带 `mode`，服务端 `normalizeMode` 归的是 `auto`、
+  `note` 走 `chat.ts:355` 的 sufficient 分支、6/6 绿；当天更早那条零编号留档是 `mode:"on"`、走 `chat.ts:356` 的 `!sufficient` 分支。
+  不得写成"同一 mode 连跑 9 次全绿"——库里是两个 run（`legacy` 6 行 `auto` + 22:33 的 3 行 `on`），
+  而 `on` 那轮 `ok` 只有 2/3、`okWithLocal` 1/3。引用时必须逐 run 带 `mode` 与 `runId`。
 - 显式撤回旧归因（保留错误说法、再说明它错在哪），不得改写成"一直就是这么判断的"。
 - 说清生成后硬校验挡不住这条失败路径（正文没有编号 → 断言集为空 → 无处可纠正），能救它的是 Task 4 Step 4 的生成前注入 + Task 3 的目录层。
-- 记下探针**没**判的东西：目录里 2026 年微软 Office 有 3 条，9 次回答全部没提 `CVE-2026-21514`。
+- **第 9 条 ① 原先写"语义检索偶发空集这 9 次没复现"，此句已作废**：22:33 那轮 `MODE=on` 3 次里第 1 次就是这条路径
+  （5 条来源全是 0.3 兜底、无一条 Office，`note` 走 `!sufficient`），且**被旧 `ok` 判据记成绿**。
+  改写成"复现 1/3，且该次被判绿"——这是这条缺陷从"印象"变成"测量"的地方，不要写回去。
+- **判据自身要跟着改**：`ok` 不检查 `srcHasId`，于是"本地一条都没命中、全靠网络"也算覆盖。探针摘要必须并排给
+  `ok` 与 `okWithLocal`（本地有据可引的绿），文档里凡说"知识库覆盖"只能用后者。这一改动会让线上数字比历史留档难看
+  （今天 3 次：`ok` 2/3 而 `okWithLocal` 1/3），**必须照实写难看的那个**，不得因为难看就只报 `ok`。
+- 记下探针**没**判的东西，并把口径写全：按 `dateAdded` 落在 2026 年、产品为 Office 的目录条目是 **5 条**（按 CVE 编号年份算才是 3 条）；
+  入库 6 行里 `CVE-2026-21514` **0/6**、`CVE-2026-124194` **4/6**（第 1、3、4、5 行）。
+  因此"这 6 次是靠网络那一侧把它补上的"这类整句归因必须收窄成 4/6（`docs/competition-post.md` 第 9 条 ②，评审定为 Critical）。
+- 引用 `dev/` 原文的地方要跟着换：反证样本已转存 `docs/eval-archive/online-kev-empty-retrieval-2026-11-14.json`，
+  正文里"`dev/*.json` 不入库、评委核不到"那句已经过时，必须改成入库文件名（评审定为 Important）。
 - 未发布前不得写成已修；发布通道没通之前，这条只能以"实测到的非确定性 + 尚未上线的修复"存在。
 
 **同一条改动里必须收窄第 8 条**（`docs/competition-post.md:237-240`）：第 8 条现在写的是"即便本地已有该编号的 KEV 标注，
 回答仍会说'本地库未覆盖'，且同一问题重跑 3 次可 3 次全红"。它的证据只有那条 `mode:"on"` / `!sufficient` 分支的单样本；
 `mode:"off"` 走的是另一条分支（`chat.ts:364` 固定话术"本地知识库未覆盖本题，需开启联网检索才能确认"，压根没有 `nSrc`）。
-必须按 mode / 分支把两种话术分开写，否则"重跑 3 次全红"会被读成由探针证明——探针给的是 9/9 绿。
+必须按 mode / 分支把两种话术分开写，否则"重跑 3 次全红"会被读成由探针证明——探针给的是 6/6 绿。
 
 - [ ] **Step 4: README 登记脚本并重跑一次作为文档证据**
 
-`README.md` 脚本清单追加（数字必须是实测的，不许留 0/3）：
+`README.md` 脚本清单追加（数字必须由入库文件现数出来，不许沿用计划里的转述；下面这组是 2026-11-14 22:33 之后文件里的实际形状）：
 
 ```markdown
 - `node scripts/probe-online-kev.mjs`：KEV 旗标题探针。`MODE`（默认 `on`，与失败留档同模式）× `N`（默认 6）连跑，
-  逐次记录"给出编号 / 给出收录日期 / 类型对得上 / 是否降级表述 / 来源标题里本来有没有该编号 / 目录里另外两条 2026 Office 有没有被提到"，
-  留档按天累加进 `docs/eval-archive/online-kev-<date>.json`（用 `runId` 区分每次运行，不覆盖历史行），有不合规即退出码 1。
-  2026-11-14 线上 `MODE=on` 共 9 行：9/9 合规、9/9 来源标题含 21509、0/9 提到 21514；另有 1 条零编号反证样本
-  （`docs/eval-archive/online-kev-empty-retrieval-2026-11-14.json`）。这就是第 9 条缺陷的证据。
+  逐次记录"给出编号 / 给出收录日期 / 类型对得上 / 是否降级表述 / 来源标题里本来有没有该编号 / 另外两条 2026 Office 有没有被提到"，
+  留档按天累加进 `docs/eval-archive/online-kev-<date>.json`（用 `runId` 区分每次运行并记下当次 `mode`，不覆盖历史行），
+  有不合规即退出码 1、`N` 非法退出码 2 且不写文件。摘要同时给 `ok`（正文四条件齐备）与 `okWithLocal`（还要求本地来源标题里本来就有该编号）——
+  两者的差就是"全靠网络兜住"的次数。
+  2026-11-14 两个 run：`legacy`（6 行，请求体未带 `mode`，服务端归 `auto`）6/6 `ok`、6/6 `srcHasId`、0/6 提 21514、4/6 提 124194；
+  `MODE=on` 重跑（3 行）`ok` 2/3、`okWithLocal` 1/3、0/3 提 21514、2/3 提 124194，其中 1 次本地检索落进关键词兜底而被旧判据记绿、
+  1 次给出无来源支撑的全局否定被 `DOWNGRADE` 判红。另有 1 条零编号反证样本
+  （`docs/eval-archive/online-kev-empty-retrieval-2026-11-14.json`，`mode=on` 的单次原始响应逐字节副本）。这就是第 9 条缺陷的证据。
 ```
 
 ```bash
@@ -398,8 +458,12 @@ git add scripts/probe-online-kev.mjs docs/competition-post.md docs/eval-archive 
 git commit -m "feat(probe): 线上 KEV 旗标题探针；docs: 按实测记第 9 条（线上非确定性），撤回旧归因并收窄第 8 条"
 ```
 
-Expected: 全绿时退出码 0、有红行时退出码 1；`tail` 最后一行同时给 `ok/N`、`srcHasId` 计数与 21514/124194 观察项。
+Expected: 全绿时退出码 0、有红行时退出码 1、`N` 非法时退出码 2 且不发起任何请求（不写留档，避免"空文件冒充全绿"）；
+`tail` 最后一行同时给 `ok/N`、`srcHasId` 计数、**接口异常次数**与 21514/124194 观察项。
 **再跑一次同文件必须看到两个 run**（`node -e` 数一下 `runs.length`），这是"不覆盖历史"的证据。
+README 的脚本清单同时要登记 `docs/eval-archive/` 里**两个**文件（探针留档与空检索反证样本），不能只列前者——
+第 9 条同时引用它们，而评委是按 README 找证据的（评审 Minor）。两个 JSON 文件末尾都要有换行符，
+与仓库里其他入库 JSON 一致，否则 `git diff` 每次显示 "\ No newline at end of file"。
 
 - [ ] **Step 5: 让第 9 条引用的每个字段都能从入库文件里核**
 
@@ -427,11 +491,12 @@ Task 1 Step 3 的计划正文要求 `dev/README.md` 说明"脚本入库、留档
 
 ### Task 3: 第 2 层知识来源新增 CISA KEV 现查目录（本地快照过期时不再靠记忆）
 
-**已验证的上游事实（今天拉的真目录，缓存在 `dev/kev-feed-cache.json`）：** `catalogVersion` = `2026.11.13`、`count` = 1781、响应 1,854,379 字节、本机经代理 2.5 秒返回；字段名是 `cveID, vendorProject, product, vulnerabilityName, dateAdded, shortDescription, requiredAction, dueDate, knownRansomwareCampaignUse, forensicTriage, notes, cwes`（**不是 `vendor`**）。2026 年微软 Office 在目录里有 3 条：`CVE-2026-21509`（2026-01-26 / 期限 2026-02-16）、`CVE-2026-21514`（2026-02-10）、`CVE-2026-124194`（2026-11-10，Outlook Missing User Interaction）。本地 `data/phase2_raw.json` 有前两条、**没有第三条**（快照停在 2026.11.09）。
+**已验证的上游事实（今天拉的真目录，缓存在 `dev/kev-feed-cache.json`）：** `catalogVersion` = `2026.11.13`、`count` = 1781、响应 1,854,379 字节、本机经代理 2.5 秒返回；字段名是 `cveID, vendorProject, product, vulnerabilityName, dateAdded, shortDescription, requiredAction, dueDate, knownRansomwareCampaignUse, forensicTriage, notes, cwes`（**不是 `vendor`**）。微软 Office 的"2026 年"条目按两个口径各有答案：按 CVE 编号年份是 3 条 —— `CVE-2026-21509`（2026-01-26 / 期限 2026-02-16）、`CVE-2026-21514`（2026-02-10，Word Reliance on Untrusted Inputs）、`CVE-2026-124194`（2026-11-10，Outlook Missing User Interaction）；按 `dateAdded` 落在 2026 年是 5 条 —— 再多 `CVE-2009-0556`（2026-01-07，PowerPoint Code Injection）与 `CVE-2009-0238`（2026-04-14，Remote Code Execution）。同一 `vendorProject=Microsoft` + `dateAdded` 2026 全产品是 **41 条**（这就是 Step 里"最具体信号优先"必须存在的实测理由）。本地 `data/phase2_raw.json` 有 21509 与 21514、**没有 124194**（快照停在 2026.11.09）。
+**这份缓存不入库**（`dev/*` 被忽略），所以它只能算开发期观察；任何要写进文档的条数必须由 Task 7 的 `scripts/refresh-time-grounds.mjs` 现查现数并落 `docs/eval-archive/time-grounds-<date>.json`，两个口径一起打印。
 
 **Files:**
 - Modify: `functions/lib/kb.ts`（在 `nvdLive` 之后追加 KEV 目录层，约 40 行）
-- Modify: `scripts/regression.test.mjs`（新增 2 个用例：1 个纯函数、1 个真实目录）
+- Modify: `scripts/regression.test.mjs`（新增 4 个用例：2 个纯函数、2 个真实目录）
 
 **Interfaces:**
 - Consumes: 无（只依赖 `fetch`，与 `nvdLive` 同样的写法与超时风格）。
@@ -441,7 +506,16 @@ Task 1 Step 3 的计划正文要求 `dev/README.md` 说明"脚本入库、留档
   - `export async function kevLookup(ids: string[]): Promise<{ confirmed: KevEntry[]; absent: string[]; unavailable: boolean }>`
   - `export function kevFromCatalog(entries: KevEntry[], ids: string[]): Doc[]`（纯函数，把目录条目转成 `Doc`，`id: \`kev:${cveID}\`、`category: "cve"`、`live: true`、正文沿用本地 KEV 前缀格式，让现有 `kevFacts()` 的 `KEV_MARK_RE` 能直接识别）
   - `export function kevDocs(entries: KevEntry[]): Doc[]`（同一套映射，不按编号过滤；`kevFromCatalog` 改为"先按 ids 筛、再交给 `kevDocs`"，两段逻辑不得各写一遍）
-  - `export function kevScopeMatches(question: string, entries: Iterable<KevEntry>): KevEntry[]`（**纯函数，按范围查目录**：从问题里取 ASCII 产品词 + 一张很小的中文厂商别名表，对 `vendorProject/product/vulnerabilityName` 做不区分大小写的子串匹配，问题里出现年份时用 `dateAdded` 前缀收窄，按 `dateAdded` 倒序取前 12 条）
+  - `export function kevScopeMatches(question: string, entries: Iterable<KevEntry>): KevEntry[]`（**纯函数，按范围查目录**：从问题里取 ASCII 词 + 一张很小的中文厂商别名表，问题里出现年份时用 `dateAdded` 前缀收窄，按 `dateAdded` 倒序取前 12 条。
+    **匹配口径必须是"最具体信号优先"，不是三字段 OR，也不能把厂商别名当产品词用**：先从目录里收集 `vendorProject` 的取值集合，
+    用它把 terms 分成"产品词"（不在该集合里）与"厂商词"；只有**产品词**命中 `product` 时才算产品级命中并据此收窄，
+    一个产品词都没命中产品时才按厂商/名称匹配。
+    两个理由都是 2026-11-14 对着真目录（`dev/kev-feed-cache.json`，295 个不同 `vendorProject`）实测出来的：
+    ① 三字段 OR 时"微软 Office + 2026"命中 42 条，`slice(0, 12)` 之后 **`CVE-2026-21509` 与 `CVE-2026-21514` 双双被挤出**，
+       留下的 12 条里 11 条是 Windows/SharePoint/SQL Server 之类不相干产品——Task 4 要注入的恰恰是被挤掉的那几条；
+    ② 目录里存在 `product` 与 `vendorProject` 同名的条目（`CVE-2026-42897`，vendorProject 与 product 都写 `Microsoft`，
+       实为 Exchange Server XSS），若把中文别名解析出的 `microsoft` 也当产品词，它会以"产品命中"混进 Office 的收窄结果，
+       把 5 条变成 6 条。产品/厂商的区分必须以目录自己的 `vendorProject` 取值为准，不靠新增词表维护）
     ——**为什么必须有这一条（2026-11-14 Task 2 实测加的）**：旗标题真实失败那一次是"语义检索空集 → `keyword()` 兜底 5 条不相干条目"，那次**问题里没有、也不可能有 CVE 编号**可供 `kevLookup(ids)` 查。只有 id 入口的目录层，在最需要它的那条路径上根本不会被触发。
   - `export const KEV_SNAPSHOT_VERSION = "2026.11.09"`（本地库快照版本，仅用于措辞"本地快照 vX 未收录"）
 
@@ -450,8 +524,8 @@ Task 1 Step 3 的计划正文要求 `dev/README.md` 说明"脚本入库、留档
 在 `scripts/regression.test.mjs` 里，紧跟现有 `test("kevFacts：在野利用只能引用带 KEV 标注的资料", ...)` 之后插入：
 
 ```js
-// 纯函数回归：本地 KEV 快照停在 2026.11.09，而目录里 2026 年微软 Office 已有 3 条
-// （21509、21514、124194，第三条 2026-11-10 新增）。现查目录必须能把它转成带 KEV 标注的资料，
+// 纯函数回归：本地 KEV 快照停在 2026.11.09，而目录里按 dateAdded 落在 2026 年的微软 Office 已有 5 条
+// （按 CVE 编号年份算是 3 条：21509、21514、124194，最后一条 2026-11-10 新增）。现查目录必须能把它们转成带 KEV 标注的资料，
 // 否则 kevFacts() 的闸门会把它当"无 KEV 证据"处理——那就是第 9 条缺陷的根因之一。
 test("kevFromCatalog：目录条目转成带 KEV 前缀的资料（本地快照缺的那条也能进闸门）", () => {
   if (!kevFromCatalog) return t_skip();
@@ -483,9 +557,16 @@ test("kevScopeMatches：问题里点厂商/产品（或中文别名）+ 年份�
     ({ cveID, vendorProject, product, vulnerabilityName, dateAdded, dueDate: "", requiredAction: "" });
   const all = [
     e("CVE-2026-21509", "Microsoft", "Office", "Microsoft Office Security Feature Bypass Vulnerability", "2026-01-26"),
-    e("CVE-2026-21514", "Microsoft", "Office", "Microsoft Office Remote Code Execution Vulnerability", "2026-02-10"),
+    e("CVE-2026-21514", "Microsoft", "Office", "Microsoft Office Word Reliance on Untrusted Inputs in a Security Decision Vulnerability", "2026-02-10"),
     e("CVE-2026-124194", "Microsoft", "Office", "Microsoft Office Outlook Missing User Interaction Vulnerability", "2026-11-10"),
     e("CVE-2025-00001", "Microsoft", "Office", "Microsoft Office Old One", "2025-03-03"),
+    // 这条存在的唯一理由就是钉住"三字段 OR"这个写法：问题里同时出现"微软"与 Office 时，
+    // 若实现按 vendorProject/product/vulnerabilityName 任一命中就算范围命中，它会被捞进来（真实目录里这样的条目有 41 条）；
+    // 按"最具体信号优先"它必须被排除，而只问厂商不带产品时它又必须在结果里。
+    e("CVE-2026-99999", "Microsoft", "Windows", "Microsoft Windows Remote Code Execution Vulnerability", "2026-06-06"),
+    // 这条照抄真目录里 CVE-2026-42897 的形状：vendorProject 与 product 都是 "Microsoft"（实际是 Exchange Server XSS）。
+    // 它专治"把厂商别名当产品词"——那种写法会让它算产品级命中，Office 的 5 条变 6 条。
+    e("CVE-2026-42897", "Microsoft", "Microsoft", "Microsoft Exchange Server Cross-Site Scripting Vulnerability", "2026-05-15"),
     e("CVE-2026-77777", "Adobe", "Acrobat", "Adobe Acrobat Reader Out of Bounds Vulnerability", "2026-05-05"),
   ];
   // ① 英文产品词 + 中文厂商别名同时命中，年份把 2025 那条筛掉
@@ -494,8 +575,16 @@ test("kevScopeMatches：问题里点厂商/产品（或中文别名）+ 年份�
     "应只含 2026 年微软 Office 三条，且按 dateAdded 倒序（新的在前）");
   assert.ok(!office2026.some((x) => x.cveID === "CVE-2025-00001"), "带年份的问题不得混入上一年的条目");
   assert.ok(!office2026.some((x) => x.cveID === "CVE-2026-77777"), "别厂商不得混入");
-  // ② 不提年份 → 同一产品的新旧条目都算范围命中
+  assert.ok(!office2026.some((x) => x.cveID === "CVE-2026-99999"),
+    "问题点了产品就只能看该产品：同厂商别的产品不得混入（三字段 OR 的写法会把这条带进来）");
+  assert.ok(!office2026.some((x) => x.cveID === "CVE-2026-42897"),
+    "厂商别名解析出的 microsoft 不得当产品词：product 与 vendorProject 同名的条目不是 Office");
+  // ② 不提年份 → 同一产品的新旧条目都算范围命中，仍然不含别的产品
   assert.equal(kevScopeMatches("微软 Office 有哪些在野利用漏洞？", all).length, 4);
+  // ②' 只点厂商、不点产品 → "最具体信号优先"不得退化成"只认产品"，该厂商当年全部条目都要在
+  const msOnly = kevScopeMatches("微软 2026 年有哪些在野利用漏洞？", all);
+  assert.ok(msOnly.some((x) => x.cveID === "CVE-2026-99999"), "只问厂商时 Windows 条目必须在结果里");
+  assert.equal(msOnly.length, 5, "微软 + 2026 应为 21509、21514、124194、99999、42897 五条");
   // ③ 问题没点任何厂商/产品 → 空数组，绝不"全量塞进上下文"
   assert.deepEqual(kevScopeMatches("什么是零日漏洞？", all), []);
   // ④ CISA/KEV/CVE 这类"来源词"不得当产品词用——否则任何 KEV 题都会匹配到含 CISA 字样的条目
@@ -548,7 +637,8 @@ Expected: FAIL，报错形如 `The keyword 'kevFromCatalog' is not exported from
 ```ts
 // ── 第 2 层：CISA KEV 现查目录（"在野利用"是有门槛的断言，本地快照会过期）──────
 // 实测 2026-11-14：本地 KEV 快照是 2026.11.09，而目录已是 2026.11.13、1781 条，
-// 2026 年微软 Office 有 3 条（21509、21514、124194），最后一条 11-10 才新增、本地库没有。
+// 按 dateAdded 落在 2026 年的微软 Office 有 5 条（2009-0556、21509、21514、2009-0238、124194），
+// 按 CVE 编号年份算是 3 条（21509、21514、124194）——最后一条 11-10 才新增、本地库没有。两个口径都要写，只写一个必然引起矛盾。
 // 目录只有一个 URL、无鉴权、约 1.8 MB，因此按 isolate 缓存 6 小时；拉不到时返回 null，
 // 让上层说"本地快照 vX 未收录"而不是"KEV 未收录"——把"没查到"说成"不存在"是本项目明令禁止的。
 export const KEV_SNAPSHOT_VERSION = "2026.11.09";
@@ -619,8 +709,11 @@ const KEV_VENDOR_ALIAS: Record<string, string> = {
  * 纯函数：不依赖问题里出现 CVE 编号，也能从目录里捞出"这个厂商/产品"的在野利用条目。
  * 存在的理由写在第 9 条缺陷里：旗标题真实失败那次是语义检索空集 → keyword() 兜底不相干条目，
  * 那次没有编号可查，只有 id 入口的目录层在最需要它的路径上不会被触发。
- * 匹配口径：问题里的 ASCII 词（去掉来源词）+ 中文厂商别名，对 vendorProject/product/vulnerabilityName
- * 做不区分大小写的子串匹配；问题里出现 20xx 时按 dateAdded 前缀收窄；按 dateAdded 倒序取前 12 条。
+ * 匹配口径：问题里的 ASCII 词（去掉来源词）+ 中文厂商别名合成 terms；用目录自己的 vendorProject 取值把 terms 分成
+ * 产品词与厂商词，**只有产品词命中 product 才算产品级命中**；问题里出现 20xx 时按 dateAdded 前缀收窄；倒序取前 12 条。
+ * **最具体信号优先**：有产品级命中时只保留它们，否则退回厂商/名称匹配。这条不是风格问题，是真目录实测出来的两件事：
+ * 三字段 OR 时"微软 Office + 2026"命中 42 条、截 12 后 21509 与 21514 双双被挤掉；而目录里 CVE-2026-42897 的
+ * product 与 vendorProject 都写 "Microsoft"，把厂商词当产品词就会让它冒充产品命中、把 5 条变成 6 条。
  * 一个词都没命中时返回空数组——绝不允许"没匹配到就把整个目录塞进上下文"。
  */
 export function kevScopeMatches(question: string, entries: Iterable<KevEntry>): KevEntry[] {
@@ -632,12 +725,21 @@ export function kevScopeMatches(question: string, entries: Iterable<KevEntry>): 
   const terms = [...new Set([...ascii, ...alias])];
   if (!terms.length) return [];
   const year = (raw.match(/20\d{2}/) ?? [])[0] ?? null;
-  return [...entries]
-    .filter((e) => {
-      const hay = `${e.vendorProject} ${e.product} ${e.vulnerabilityName}`.toLowerCase();
-      if (!terms.some((p) => hay.includes(p))) return false;
-      return !year || String(e.dateAdded ?? "").startsWith(year);
-    })
+  const list = [...entries];
+  // 厂商词表不另起一张表：目录里 vendorProject 出现过什么，什么就是厂商词（实测 295 个不同取值）。
+  const vendorWords = new Set(list.map((e) => String(e.vendorProject ?? "").toLowerCase().trim()));
+  const productTerms = terms.filter((t) => !vendorWords.has(t));
+  // 逐条分别记录"产品级命中"与"厂商/名称命中"：产品是更具体的信号，需要按字段分开才知道该不该收窄。
+  const hit = list.map((e) => {
+    const prod = String(e.product ?? "").toLowerCase();
+    const vend = String(e.vendorProject ?? "").toLowerCase();
+    const name = String(e.vulnerabilityName ?? "").toLowerCase();
+    return { e, byProduct: productTerms.some((t) => prod.includes(t)), byVendor: terms.some((t) => vend.includes(t) || name.includes(t)) };
+  }).filter((h) => h.byProduct || h.byVendor);
+  const scoped = hit.some((h) => h.byProduct) ? hit.filter((h) => h.byProduct) : hit;
+  return scoped
+    .map((h) => h.e)
+    .filter((e) => !year || String(e.dateAdded ?? "").startsWith(year))
     .sort((a, b) => String(b.dateAdded).localeCompare(String(a.dateAdded)))
     .slice(0, 12);
 }
@@ -679,15 +781,30 @@ test("kevCatalog：现查目录能确认 CVE-2026-21509 的收录日期，且 12
   assert.ok(r.absent.includes("CVE-2099-00001"), "目录里确实没有的编号应落 absent，不是报错");
   assert.ok(!r.absent.includes("CVE-2026-21509"), "确认过的编号不得同时出现在 absent 里");
 });
+
+// 同一条真实目录，钉住"最具体信号优先"：合成 fixture 只有 6 条，看不出三字段 OR 的代价；
+// 真目录里 Microsoft + 2026 有 41 条，若按 OR 匹配再截 12 条，结果会被 Windows/Edge 之类淹掉——
+// 那正是 Task 4 注入路径失效的形态，而它只在打真目录时才暴露。
+test("kevScopeMatches：真实目录上按产品收窄，旗标题只应返回 Office 条目", async (t) => {
+  if (SKIP_LLM) return t.skip("SKIP_LLM=1");
+  if (!kevScopeMatches) return t_skip();
+  const map = await kevCatalog();
+  if (!map) { console.warn("  [warn] CISA 目录当前不可达（本机需 HTTPS_PROXY；线上未验证）"); return; }
+  const hits = kevScopeMatches("2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？", [...map.values()]);
+  assert.ok(hits.length >= 3, `按 dateAdded 落在 2026 的 Office 条目应至少 3 条，实际 ${hits.length}`);
+  assert.ok(hits.every((e) => /office/i.test(String(e.product))),
+    `命中里出现了非 Office 产品：${hits.map((e) => `${e.cveID}/${e.product}`).join(", ")}`);
+  assert.ok(hits.some((e) => e.cveID === "CVE-2026-124194"), "本地快照缺的那条必须由范围查询捞出");
+});
 ```
 
 > `return` 前没有断言的那条分支（`r.unavailable`）是**故意留的软分支**：目录不可达不能把整套回归变红，但也不能假装通过——它必须打印 `[warn]`，且 Task 4 的第 ③ 分支负责在这种状态下改变措辞。
 
 ```bash
-cd /f/Qoder/seccopilot && node --test --experimental-strip-types --test-name-pattern "kevCatalog" scripts/regression.test.mjs
+cd /f/Qoder/seccopilot && node --test --experimental-strip-types --test-name-pattern "kevCatalog|kevScopeMatches：真实目录" scripts/regression.test.mjs
 ```
 
-Expected: PASS。若打印 `[skip] CISA 目录当前不可达`，先确认代理（`HTTPS_PROXY=http://127.0.0.1:7897`）；连续两次同样失败即按平台/网络侧问题记录，不要继续重试。
+Expected: PASS 2 条（`kevLookup` 那条与新的真实目录范围查询那条）。若打印 `[warn] CISA 目录当前不可达`，先确认代理（`HTTPS_PROXY=http://127.0.0.1:7897`）；连续两次同样失败即按平台/网络侧问题记录，不要继续重试。
 
 - [ ] **Step 5: 全量只读回归不回归，然后提交**
 
@@ -708,7 +825,7 @@ Expected: `SKIP_LLM=1 npm test` 至少 `# pass 12` 以上（新增 1 个纯函�
 
 ### Task 4: 生成后对"在野利用"断言做硬校验（编号真、结论错 / 有证据却不说 → 代码层更正）
 
-**为什么不能只靠 prompt（2026-11-14 Task 2 实测后改写过一次）：** 立项时写的理由是"线上旗标题零编号、检索明明拿到了 21509"，这条**已被 Task 2 的留档证伪**（`docs/competition-post.md` 第 9 条：线上 9 次全绿；那条零编号回答的 5 条 `sources` 相似度全是 0.3 的关键词兜底条目、里面根本没有 21509，真实因果是"语义检索空集 → 兜底 → 判不充分 → 如实拒答"）。改写后剩下的理由是两条仍然成立的：① 回答正文把某个编号说成在野利用、而 KEV 目录里没有它（第 3 条缺陷那一类"编号真、结论错"），措辞与闸门都只是"请求模型照做"，硬校验是"不照做就在代码层更正"；② 当上下文里确实有 KEV 证据（语义检索命中或 Task 3 现查目录返回）而正文没提，代码层可以补一段核验事实。这两件事与 Task 3 分开提交，因为评审者可能接受现查目录、却不同意改动回答正文。
+**为什么不能只靠 prompt（2026-11-14 Task 2 实测后改写过两次）：** 立项时写的理由是"线上旗标题零编号、检索明明拿到了 21509"，这条**已被 Task 2 的留档证伪**（`docs/competition-post.md` 第 9 条：入库的 6 行 `auto` 全绿；那条零编号回答的 5 条 `sources` 相似度全是 0.3 的关键词兜底条目、里面根本没有 21509，真实因果是"语义检索空集 → 兜底 → 判不充分 → 如实拒答"）。第二次改写是 22:33 的 `MODE=on` 重跑：那条兜底路径**在线上复现了 1/3**，而旧判据把它记成绿——所以"检索偶发落空"不再是"没复现的风险"，是实测频次。改写后剩下的理由是两条仍然成立的：① 回答正文把某个编号说成在野利用、而 KEV 目录里没有它（第 3 条缺陷那一类"编号真、结论错"），措辞与闸门都只是"请求模型照做"，硬校验是"不照做就在代码层更正"；② 当上下文里确实有 KEV 证据（语义检索命中或 Task 3 现查目录返回）而正文没提，代码层可以补一段核验事实。这两件事与 Task 3 分开提交，因为评审者可能接受现查目录、却不同意改动回答正文。
 **边界必须写清：** 硬校验挡不住"语义检索空集 → 兜底"那条路径——那次上下文里没有可校验的编号；救它的是 Task 3，且 Task 3 的触发条件**不得依赖本地检索结果**（已在 Task 3  Interfaces 里钉成约束）。
 
 **Files:**
@@ -945,8 +1062,13 @@ export function kevCorrection(
 ```
 
 import 行（`chat.ts:6`）加上 `kevCatalog`、`kevDocs`、`kevScopeMatches`。上限 `5` / `8` 的取法：
-`kevScopeMatches` 已按 `dateAdded` 倒序截到 12，旗标题（微软 Office + 2026）实际命中 3 条，取前 5 足够；
+`kevScopeMatches` 已按 `dateAdded` 倒序截到 12，旗标题（微软 Office + 2026，按 `dateAdded` 口径实测 5 条，
+其中 `annotated` 过滤掉本地已有标注的 21509/21514 后剩 3 条）取前 5 足够；
 总数 8 是给本地精确锚点条目留位置，同时把 `localBlock` 控制在 8 × 900 字符内。
+**这里必须写"5 条（过滤前）/ 3 条（过滤后）"而不是笼统一句"命中 3 条"**：`slice(0, 5)` 在 11-14 的真实目录上恰好一条不截，
+于是它是"没起作用"而不是"够用"——若哪天 Office 的 2026 条目涨到 7 条，这个 5 就静默丢最新的 2 条。
+Step 里要补一条断言（可放在真实目录用例里）：`kevDocs(kevScopeMatches(旗标题, 全目录))` 里最新的 `CVE-2026-124194` 必须在，
+且打印"过滤前 N 条 / 注入 M 条"，让截断发生时留得下证据。
 
 **这一步的验收判据必须用 `mode=off`，不能用默认 auto：** auto/on 下网络检索照样发生，
 而我们已经在留档里看到网络来源出现过《微软2026年11月补丁星期二解析…Outlook 零日 CVE-2026-124194》——
@@ -1024,7 +1146,7 @@ SITE=http://127.0.0.1:8000 MODE=off N=4 \
 ```
 
 Expected: `harness=200`；探针 4 次里 `hasId && hasDate && hasType` 全真，退出码 0。
-`OUT=` 是必需的：默认文件名装的是**线上**证据，把本机 harness 的行并进去之后，第 9 条里"线上 9/9 绿"
+`OUT=` 是必需的：默认文件名装的是**线上**证据，把本机 harness 的行并进去之后，第 9 条里"线上 `legacy` run 6/6 绿"
 就无法与"我改过代码的本机结果"区分（评审 Important 8）。本机结果另存 `local-kev-<date>.json`，
 并在 `docs/competition-post.md` 里按本机文件引用。
 这一支现在由**两条**机制共同保证：Step 4 的注入让正文一开始就有可照抄的编号，Step 5 的硬校验在漏说时补上。
@@ -1376,7 +1498,7 @@ search_used 只表示 plugins.search 执行过，原先据此写'结合了网络
 
 ### Task 7: 时效题基准刷新到评测日（11-10 的基准现在已经不准了）
 
-**为什么必须做：** `scripts/eval.mjs` 的 ground truth 是 2026-11-10 逐条核过 NVD 写死的，其中"本周有没有新披露的高危漏洞？"的 `ground` 直接写着"评测日为 2026-11-10"。今天（11-14）KEV 目录已到 `2026.11.13`、新增 8 条，且 2026 年微软 Office 从 2 条变 3 条（CVE-2026-124194，11-10 收录）。那道旗标题的 `expect.pattern` 只认 `CVE-2026-21509`：一个把三条都列全、却没写 21509 的正确回答会被判错；反过来 11-10 之后"本周"的窗口也移动了。**基准过期不是产品缺陷，是尺子过期——必须主动刷新并留核校记录，否则报告里的分数含义会变。**
+**为什么必须做：** `scripts/eval.mjs` 的 ground truth 是 2026-11-10 逐条核过 NVD 写死的，其中"本周有没有新披露的高危漏洞？"的 `ground` 直接写着"评测日为 2026-11-10"。今天（11-14）KEV 目录已到 `2026.11.13`、新增 8 条，微软 Office 的"2026 年"条目也从 11-10 基准里的 2 条（按 CVE 编号年份：21509、21514）变成按编号年份 3 条、按 `dateAdded` 5 条（新增 CVE-2026-124194，11-10 收录；两条 2026 年才进目录的老编号 2009-0556、2009-0238 只有 `dateAdded` 口径才看得见）。那道旗标题的 `expect.pattern` 只认 `CVE-2026-21509`：一个把三条都列全、却没写 21509 的正确回答会被判错；反过来 11-10 之后"本周"的窗口也移动了。**基准过期不是产品缺陷，是尺子过期——必须主动刷新并留核校记录，否则报告里的分数含义会变。**
 
 **Files:**
 - Create: `scripts/refresh-time-grounds.mjs`
@@ -1427,10 +1549,14 @@ for (let i = 0; i < IDS.length; i++) {
 const feed = await fetchKev();
 checked.kev = { catalogVersion: feed.catalogVersion, count: feed.count };
 console.log(`\nKEV 目录：版本 ${feed.catalogVersion}，共 ${feed.count} 条`);
-const office2026 = feed.vulnerabilities.filter((x) => /^CVE-2026/.test(x.cveID) && /Office/i.test(x.product) && /Microsoft/i.test(x.vendorProject));
-console.log(`2026 年微软 Office 的 KEV 条目 ${office2026.length} 条：`);
-for (const o of office2026) console.log(`  ${o.dateAdded} ${o.cveID} ${o.vulnerabilityName}`);
-if (office2026.length > 1) checked.changes.push(`旗标题 expect.pattern 应覆盖 ${office2026.map((x) => x.cveID).join("|")}（现只认 CVE-2026-21509）`);
+// 两个口径都要打印，且判据按 dateAdded 那一套推：题面"2026 年被 CISA 确认"里的"确认"对应 dateAdded，
+// 只按 CVE 编号年份筛会漏掉 CVE-2009-0556/0238 这种"老编号、2026 年才进 KEV"的条目——它们恰恰是最容易被答漏的。
+const isOffice = (x) => /Office/i.test(x.product) && /Microsoft/i.test(x.vendorProject);
+const byAdded = feed.vulnerabilities.filter((x) => /^2026/.test(x.dateAdded) && isOffice(x));
+const byNumber = feed.vulnerabilities.filter((x) => /^CVE-2026/.test(x.cveID) && isOffice(x));
+console.log(`微软 Office 的 KEV 条目：按 dateAdded 落在 2026 年 ${byAdded.length} 条；按 CVE 编号年份 2026 ${byNumber.length} 条`);
+for (const o of byAdded) console.log(`  ${o.dateAdded} ${o.cveID} ${o.vulnerabilityName}`);
+if (byAdded.length > 1) checked.changes.push(`旗标题 expect.pattern 应覆盖 dateAdded-2026 的 ${byAdded.map((x) => x.cveID).join("|")}（现只认 CVE-2026-21509；按编号年份口径才是 ${byNumber.length} 条）`);
 const thisWeek = feed.vulnerabilities.filter((x) => x.dateAdded > new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10));
 console.log(`最近 7 天 KEV 新增 ${thisWeek.length} 条（"本周有没有新披露高危漏洞"的参考事实）`);
 
@@ -1448,7 +1574,7 @@ console.log("\n基准仍成立。");
 cd /f/Qoder/seccopilot && PROXY=1 node scripts/refresh-time-grounds.mjs; echo "exit=$?"
 ```
 
-Expected: 打印 `KEV 目录：版本 2026.11.13，共 1781 条`、2026 年微软 Office 3 条（含 `2026-11-10 CVE-2026-124194`）、`exit=1` 与"旗标题 expect.pattern 应覆盖 …"。（版本/条数会随目录更新变化，以脚本当天输出为准写文档。）
+Expected: 打印 `KEV 目录：版本 2026.11.13，共 1781 条`、`微软 Office 的 KEV 条目：按 dateAdded 落在 2026 年 5 条；按 CVE 编号年份 2026 3 条`（含 `2026-11-10 CVE-2026-124194`）、`exit=1` 与"旗标题 expect.pattern 应覆盖 …"。（版本/条数会随目录更新变化，以脚本当天输出为准写文档，且两个口径都要写。）
 
 - [ ] **Step 3: 按输出改基准（两处，且都在注释里记下核校日期与来源）**
 
@@ -1456,13 +1582,20 @@ Expected: 打印 `KEV 目录：版本 2026.11.13，共 1781 条`、2026 年微�
 
 ```js
 // 时效题基准核对日：2026-11-14（node scripts/refresh-time-grounds.mjs，留档 docs/eval-archive/time-grounds-2026-11-14.json）。
-// 核对时 KEV 目录版本 2026.11.13 / 1781 条；2026 年微软 Office 有 3 条 KEV：
-//   CVE-2026-21509（2026-01-26）、CVE-2026-21514（2026-02-10）、CVE-2026-124194（2026-11-10，本地库无）。
-// 判据从"只认 21509"改为"三条任一 + 类型对得上"，并额外要求给出该条自身的收录日期：
-// 基准过期时尺子会变严或变松，所以日期与来源写在这里，重跑时先看这里再看分数。
+// 核对时 KEV 目录版本 2026.11.13 / 1781 条。"2026 年微软 Office"有两个都成立的口径，必须先说清用哪个：
+//   按 dateAdded 落在 2026 年且 product=Office → 5 条：21509（01-26）、2009-0556（01-07）、21514（02-10）、2009-0238（04-14）、124194（11-10）；
+//   按 CVE 编号年份=2026 且 product=Office → 3 条：21509、21514、124194。
+// 题目问的是"2026 年被 CISA 确认在野利用"，"确认"对应 dateAdded，所以判据按 5 条口径写；
+// 文档里凡出现"3 条"必须同时写明是编号年份口径，否则同一份材料里两个数会被读成矛盾。
+// 判据从"只认 21509"改为"任一 + 类型对得上"，并额外要求给出该条自身的收录日期。
+// ⚠ 这条 pattern 与 title 是各自独立在全篇正文上匹配的、不按编号配对，因此它天然抓不到
+//    "列全 5 条但把类型安错人"这种回答——把它从 3 个 id 扩到 5 个只会让这个盲区变大。
+//    所以 Step 4 必须同步给 --selfcheck 加一条合成红样本（编号对、类型张冠李戴），证明新判据仍然会判红；
+//    只扩 pattern 不扩自检，等于宣称尺子变准而实际只是变宽。
 { kind: "time", q: "2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？",
-    expect: { pattern: "CVE-2026-(21509|21514|124194)", title: "Security Feature Bypass|安全功能绕过|Missing User Interaction|缺乏用户交互" },
-    ground: "KEV 目录 2026.11.13 里 2026 年微软 Office 共 3 条：21509（收录 2026-01-26，安全功能绕过）、21514（2026-02-10）、124194（2026-11-10，Outlook 缺乏用户交互）；本地库快照 2026.11.09 只含前两条，故 off 模式答出 21509 即为合格，答出 124194 只能来自现查目录" },
+    expect: { pattern: "CVE-2026-(21509|21514|124194)|CVE-2009-(0238|0556)",
+      title: "Security Feature Bypass|安全功能绕过|Missing User Interaction|缺乏用户交互|Remote Code Execution|远程代码执行|Code Injection|代码注入|Reliance on Untrusted Inputs" },
+    ground: "KEV 目录 2026.11.13 里按 dateAdded 落在 2026 年的微软 Office 共 5 条：2009-0556（2026-01-07，PowerPoint 代码注入）、21509（2026-01-26，安全功能绕过）、21514（2026-02-10，Word 依赖不可信输入）、2009-0238（2026-04-14，远程代码执行）、124194（2026-11-10，Outlook 缺乏用户交互）；按 CVE 编号年份算则是 3 条（21509/21514/124194）。本地库快照 2026.11.09 只含 21509 与 21514，故 off 模式答出 21509 即为合格，答出 124194 只能来自现查目录" },
 ```
 
 "本周有没有新披露的高危漏洞？"那条把 `ground` 改为：
@@ -1474,7 +1607,7 @@ Expected: 打印 `KEV 目录：版本 2026.11.13，共 1781 条`、2026 年微�
 同时把 `failIf` 里的"早于本周"边界从写死 `2026-0[1-8]-` 改成按核对日推导的常量，避免下个月又过期：
 
 ```js
-const EVAL_DAY = process.env.EVAL_DAY ?? new Date().toISOString().slice(0, 10); // 基准核对日，可覆盖
+const EVAL_DAY = process.env.EVAL_DAY ?? new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10); // 基准核对日：按北京时区取日期，与留档文件名同一口径；可覆盖
 const WEEK_START = (() => { const d = new Date(`${EVAL_DAY}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 7); return d.toISOString().slice(0, 10); })();
 ```
 
@@ -1483,7 +1616,7 @@ const WEEK_START = (() => { const d = new Date(`${EVAL_DAY}T00:00:00Z`); d.setUT
 在 `QUESTIONS` 上方定义常量，并在 `timeAccuracy(e, answer)` 里加分支（那里的 `e` 就是题目对象的 `expect`）：
 
 ```js
-const EVAL_DAY = process.env.EVAL_DAY ?? new Date().toISOString().slice(0, 10); // 基准核对日，可覆盖
+const EVAL_DAY = process.env.EVAL_DAY ?? new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10); // 基准核对日：按北京时区取日期，与留档文件名同一口径；可覆盖
 const WEEK_START = (() => { const d = new Date(`${EVAL_DAY}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 7); return d.toISOString().slice(0, 10); })();
 ```
 
@@ -1512,7 +1645,18 @@ const WEEK_START = (() => { const d = new Date(`${EVAL_DAY}T00:00:00Z`); d.setUT
       e: { pattern: "CVE-2026-\\d{4,7}", withinWeek: true,
            admit: "(未覆盖|无法确认)[^。；]{0,24}(本周|近\\s*7\\s*天)" },
       a: "本地库最近一条是 CVE-2026-34486，KEV 收录于 2026-08-04，早于本周（2026-11-14），无法确认本周新增。", want: true },
+    // 第 8 条样本是为 expect.pattern 从 1 个 id 扩到 5 个 id 而必须加的：pattern 与 title 各在全篇独立匹配，
+    // "列了真编号、安了真类型、但对错了人"这种回答在放宽后最容易溜过去。它必须判红，否则扩口径就是纯放宽。
+    { name: "编号真、类型也真，但类型安错了编号（应当判红）",
+      e: { pattern: "CVE-2026-(21509|21514|124194)|CVE-2009-(0238|0556)",
+           title: "Security Feature Bypass|安全功能绕过|Missing User Interaction|缺乏用户交互|Remote Code Execution|远程代码执行|Code Injection|代码注入|Reliance on Untrusted Inputs" },
+      a: "2026 年被 CISA 确认在野利用的微软 Office 漏洞包括 CVE-2026-21509，为远程代码执行漏洞，收录于 2026-01-26。", want: false },
 ```
+
+> 这条样本能不能判红，取决于 `timeAccuracy` 里的 `title` 判据是"全篇任一词命中"还是"与编号同句/同条对应"。
+> 现有实现是前者（`dev/check-title-criterion.mjs` 逐行重算用的也是全篇匹配），那么这条样本在旧实现下**会判绿**——
+> 于是 Step 4 的正确顺序是：先跑 selfcheck 看它红不红；**红了才说明放宽判据没被同时加严**，绿了就必须把 `title` 判据改成按编号就近配对
+> （在 `expect.titleFor` 之类的新字段下实现，且旧样本不得因此翻绿），再重跑。不允许"把样本删掉"当作通过。
 
 selfcheck 头部把 `EVAL_DAY` 钉成 `2026-11-14`（`process.env.EVAL_DAY ||= "2026-11-14"`）再判——否则"绿"那条会随真实日期漂移，用例本身就成了日期的函数。
 
@@ -1527,16 +1671,20 @@ BASELINE_JSON=docs/eval-archive/deployed-prompt-only-2026-11-12.json EVAL_JSON=d
   node scripts/eval.mjs --rescore --only=on > dev/grounds-rescore.log 2>&1; tail -12 dev/grounds-rescore.log
 ```
 
-Expected: `判分器自检通过 7/7（含 3 个"必须判红"的方向）`；`共核对 N 行，判定翻转 0 行`；rescore 报告里逐行列出判定翻转（若旗标题从 `false` 翻成 `true`，那是基准覆盖变宽的正常结果，**必须写进报告而不是挑好看的那遍**）。
+Expected: `判分器自检通过 8/8（含 4 个"必须判红"的方向）`——第 8 条是 Step 3 新增的"编号对、类型张冠李戴"合成红样本，
+它存在的理由就是 `expect.pattern` 从 1 个 id 扩到 5 个 id 后，`pattern` 与 `title` 仍各在全篇独立匹配、最容易放走张冠李戴；
+**没有这条样本就不许宣布判据变准了**，只能说变宽。另：`共核对 N 行，判定翻转 0 行`；rescore 报告里逐行列出判定翻转（若旗标题从 `false` 翻成 `true`，那是基准覆盖变宽的正常结果，**必须写进报告而不是挑好看的那遍**）。
 
 - [ ] **Step 5: 提交（尺子变更单独一个提交，便于评审者只看这一处）**
 
 ```bash
 git add scripts/refresh-time-grounds.mjs scripts/eval.mjs
-git commit -m "chore(eval): 时效题基准核对到 2026-11-14（KEV 2026.11.13，Office 3 条）
+git commit -m "chore(eval): 时效题基准核对到 2026-11-14（KEV 2026.11.13，Office 按 dateAdded 5 条／按编号年份 3 条）
 
-2026-11-10 写死的基准已过期：KEV 目录里 2026 年微软 Office 从 2 条变 3 条，
-CVE-2026-124194（11-10 收录）本地库没有。expect.pattern 覆盖三条并集、title 判据补对应类型，
+2026-11-10 写死的基准已过期：KEV 目录里微软 Office 的 2026 条目从 2 条（编号年份口径）变成
+3 条（同口径）／5 条（按 dateAdded，多出 2009-0556、2009-0238 两条老编号），
+CVE-2026-124194（11-10 收录）本地库没有。expect.pattern 按 dateAdded 口径覆盖五条并集、title 判据补对应类型，
+并给 --selfcheck 加一条'编号对、类型张冠李戴'的合成红样本证明放宽后的尺子仍会判红；
 '本周'的日期边界改由 EVAL_DAY 推导而不是写死 2026-0[1-8]-。刷新脚本会串行打 NVD（限流 5 次/30 秒）
 和 CISA 目录，核对结果落 docs/eval-archive/time-grounds-<date>.json。"
 ```
