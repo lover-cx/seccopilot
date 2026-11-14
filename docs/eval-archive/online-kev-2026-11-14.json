@@ -1,0 +1,120 @@
+{
+ "site": "https://seccopilot-kpa8w0w9u7e.qoder.zone",
+ "q": "2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？",
+ "rows": [
+  {
+   "i": 1,
+   "http": 200,
+   "coverage": "mixed",
+   "searchUsed": true,
+   "note": "结合本地知识库与网络检索作答；网络来源未经知识库校验",
+   "nSrc": 5,
+   "nWeb": 2,
+   "srcHasId": true,
+   "hasId": true,
+   "hasDate": true,
+   "hasType": true,
+   "degraded": false,
+   "webTitles": [
+    "微软2026年11月补丁星期二解析:1094个 CVE、Outlook 零日 CVE-2026-124194 与修复优先级",
+    "2026年6月23日-行业日报-GPT5.6即将上线微信小微灰度测试"
+   ],
+   "answer": "2026年被CISA确认在野利用的微软Office漏洞包括：\n\n- **CVE-2026-21509**：Microsoft Office安全功能绕过漏洞，于2026年1月26日被收录至CISA KEV目录，攻击者可利用恶意文档绕过安全机制执行代码[7]。该漏洞影响Office 2016、2019、LTSC 2021、LTSC 2024及Microsoft 365 Apps for Enterprise，已被APT28组织用于针对乌克兰等国的攻击[3][7]。\n\n- **CVE-2026-124194**：Outlook欺骗漏洞，虽非直接针对Office核心应用，但属于微软产品中唯一在野利用的“中等”评级漏洞，于2026年11月10日被CISA收录，用户打开特制邮件文件后可能静默泄露NTLMv2哈希[1]。\n\n此外，尽管部分漏洞如CVE-2026-32201（SharePoint）和CVE-2026-33824（IKE）也被列入KEV，但它们不属于Office产品线[6][4]。"
+  },
+  {
+   "i": 2,
+   "http": 200,
+   "coverage": "mixed",
+   "searchUsed": true,
+   "note": "结合本地知识库与网络检索作答；网络来源未经知识库校验",
+   "nSrc": 5,
+   "nWeb": 2,
+   "srcHasId": true,
+   "hasId": true,
+   "hasDate": true,
+   "hasType": true,
+   "degraded": false,
+   "webTitles": [
+    "微软2026年11月补丁星期二解析:1094个 CVE、Outlook 零日 CVE-2026-124194 与修复优先级",
+    "2026年6月23日-行业日报-GPT5.6即将上线微信小微灰度测试"
+   ],
+   "answer": "2026年被CISA确认在野利用的微软Office漏洞包括：\n\n- **CVE-2026-21509**：Microsoft Office安全功能绕过漏洞，于2026年1月26日被收录至CISA KEV目录，攻击者可利用恶意文档绕过安全机制执行代码[7]。该漏洞影响Office 2016、2019、LTSC 2021、LTSC 2024及Microsoft 365企业版[7]。\n\n此外，虽然部分资料提及其他Office相关漏洞，但未明确指出其在2026年被CISA列入在野利用状态。例如，有报道提到APT28组织在2026年初利用CVE-2026-21509对乌克兰等国发起攻击[3]，进一步佐证其在野利用事实。"
+  },
+  {
+   "i": 3,
+   "http": 200,
+   "coverage": "mixed",
+   "searchUsed": true,
+   "note": "结合本地知识库与网络检索作答；网络来源未经知识库校验",
+   "nSrc": 5,
+   "nWeb": 2,
+   "srcHasId": true,
+   "hasId": true,
+   "hasDate": true,
+   "hasType": true,
+   "degraded": false,
+   "webTitles": [
+    "微软2026年11月补丁星期二解析:1094个 CVE、Outlook 零日 CVE-2026-124194 与修复优先级",
+    "2026年6月23日-行业日报-GPT5.6即将上线微信小微灰度测试"
+   ],
+   "answer": "2026年被CISA确认在野利用的微软Office漏洞包括：\n\n- **CVE-2026-21509**：Microsoft Office安全功能绕过漏洞，于2026年1月26日被收录至CISA KEV目录，修复期限为2026年2月16日。该漏洞允许攻击者通过恶意Office文档绕过安全机制，已在真实攻击中被利用，APT28组织曾针对中东欧国家发动攻击[3][7]。\n\n- **CVE-2026-124194**：Outlook欺骗漏洞，虽非直接针对Office核心组件，但属于微软产品线中的关键漏洞，于2026年11月10日被CISA列入KEV目录。其利用方式为用户打开特制邮件文件后，静默连接攻击者控制地址，泄露NTLMv2哈希[1]。\n\n此外，尽管部分早期漏洞如CVE-2016-7193、CVE-2016-7262等曾被纳入KEV目录，但其收录时间早于2026年，不计入本年度新增在野利用记录[1][3]。"
+  },
+  {
+   "i": 4,
+   "http": 200,
+   "coverage": "mixed",
+   "searchUsed": true,
+   "note": "结合本地知识库与网络检索作答；网络来源未经知识库校验",
+   "nSrc": 5,
+   "nWeb": 2,
+   "srcHasId": true,
+   "hasId": true,
+   "hasDate": true,
+   "hasType": true,
+   "degraded": false,
+   "webTitles": [
+    "微软2026年11月补丁星期二解析:1094个 CVE、Outlook 零日 CVE-2026-124194 与修复优先级",
+    "2026年6月23日-行业日报-GPT5.6即将上线微信小微灰度测试"
+   ],
+   "answer": "2026年被CISA确认在野利用的微软Office漏洞包括：\n\n- **CVE-2026-21509**：Microsoft Office安全功能绕过漏洞，于2026年1月26日被收录至CISA KEV目录，修复期限为2026年2月16日。该漏洞允许攻击者通过恶意Office文档绕过安全功能，已在野外被APT28等组织利用[7][3]。\n\n- **CVE-2026-124194**：Outlook欺骗漏洞（非纯Office产品，但关联办公环境），于2026年11月10日被CISA列入KEV目录，评级为中等（CVSS 6.5），已被确认在野利用，攻击者可诱使用户打开特制邮件文件后静默泄露NTLMv2哈希[1]。\n\n此外，尽管其他如CVE-2026-32201（SharePoint）和CVE-2026-33824（IKE）也被列入KEV，但它们不属于Office产品线[6][2]。"
+  },
+  {
+   "i": 5,
+   "http": 200,
+   "coverage": "mixed",
+   "searchUsed": true,
+   "note": "结合本地知识库与网络检索作答；网络来源未经知识库校验",
+   "nSrc": 5,
+   "nWeb": 2,
+   "srcHasId": true,
+   "hasId": true,
+   "hasDate": true,
+   "hasType": true,
+   "degraded": false,
+   "webTitles": [
+    "微软2026年11月补丁星期二解析:1094个 CVE、Outlook 零日 CVE-2026-124194 与修复优先级",
+    "2026年6月23日-行业日报-GPT5.6即将上线微信小微灰度测试"
+   ],
+   "answer": "2026年被CISA确认在野利用的微软Office漏洞包括：\n\n- **CVE-2026-21509**：Microsoft Office安全功能绕过漏洞，于2026年1月26日被收录至CISA KEV目录，攻击者可利用恶意文档绕过安全机制执行代码[7]。该漏洞影响Office 2016、2019、LTSC 2021、LTSC 2024及Microsoft 365 Apps for Enterprise，修复期限为2026年2月16日[2][7]。\n\n- **CVE-2026-124194**：Outlook欺骗漏洞（非直接Office应用，但属微软邮件产品线），于2026年11月10日被CISA列入KEV目录，攻击者可通过特制邮件文件静默泄露用户NTLMv2哈希，已被确认在野利用[1]。\n\n此外，尽管部分资料提及其他漏洞（如CVE-2026-32201）被列入KEV目录，但其具体细节与时间未明确指向2026年11月[6]，且当前无权威信息支持其在2026年11月仍处于活跃利用状态。因此，以上两项为当前可确认的2026年在野利用的微软Office相关漏洞。"
+  },
+  {
+   "i": 6,
+   "http": 200,
+   "coverage": "mixed",
+   "searchUsed": true,
+   "note": "结合本地知识库与网络检索作答；网络来源未经知识库校验",
+   "nSrc": 5,
+   "nWeb": 2,
+   "srcHasId": true,
+   "hasId": true,
+   "hasDate": true,
+   "hasType": true,
+   "degraded": false,
+   "webTitles": [
+    "微软2026年11月补丁星期二解析:1094个 CVE、Outlook 零日 CVE-2026-124194 与修复优先级",
+    "2026年6月23日-行业日报-GPT5.6即将上线微信小微灰度测试"
+   ],
+   "answer": "2026年被CISA确认在野利用的微软Office漏洞包括：\n\n- **CVE-2026-21509**：Microsoft Office安全功能绕过漏洞，于2026年1月26日被CISA收录至KEV目录，攻击者可利用恶意文档绕过安全机制执行代码[7]。该漏洞影响Office 2016、2019、LTSC 2021、LTSC 2024及Microsoft 365 Apps for Enterprise[7]。\n\n此外，虽然其他相关漏洞如CVE-2016-7193、CVE-2016-7262和CVE-2015-1642曾被列为在野利用，但其KEV收录时间早于2026年，不属本年度新增[1][3]。"
+  }
+ ]
+}
