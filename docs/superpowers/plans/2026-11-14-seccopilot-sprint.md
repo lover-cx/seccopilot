@@ -92,11 +92,21 @@ dist/
 .qoder-sites/
 .qoder-sites.json
 
-# 数据与探针留档：体积大（data/ 129 MB，phase2_emb.jsonl 单文件 103 MB）或含凭据，不入库
-data/*.json
-data/*.jsonl
-data/.env
+# data/：129 MB 批量数据与凭据（phase2_emb.jsonl 单文件 103 MB）。
+# 用"data/* + 逐类放行"而不是"data/*.json + data/*.jsonl"：后者是含斜杠的锚定模式，
+# * 不跨 /，data/sub/keV_snapshot.json、data/dump.sql、data/emb.json.gz 都会漏网。
+data/*
+!data/.env.example
+!data/SETUP.md
+!data/requirements.txt
+!data/*.py
+
+# dev/：本机探针。这里放的是**代码**——package.json 的 dev:function / dev:function:node
+# 直接指向 dev/function-local.ts 与 dev/function-node.ts，README 的"30 秒复现"又引用 dev/*.mjs；
+# 全挡掉的话公开仓库的 README 就是一堆跑不通的命令。留档类（json/txt/md/log）一律不入库。
 dev/*
+!dev/*.mjs
+!dev/*.ts
 !dev/README.md
 
 # SDD 工作区（本计划的 ledger / brief / review package，是临时草稿）
@@ -107,8 +117,9 @@ dev/*
 coverage/
 ```
 
-> 说明 ①：忽略一个目录要用 `dev/*` 而不是 `dev/`——写 `dev/` 会让 git 不再进入该目录，后面的 `!dev/README.md` 就永远不生效（本计划第一次草稿犯过这个错，Task 1 Step 2 的验证要检查 `git ls-files dev/README.md` 有输出）。
-> 说明 ②：`dev/` 其余内容不入库（全是本机一次性探针与留档，含 `online-kev-2026-11-14.json`、`kev-feed-cache.json`），但**文档里引用过的 `dev/*.mjs` 脚本必须能被复现**，所以 Step 3 会把它们需要的输入口径写进 `dev/README.md`（唯一入库的 dev 文件）。若用户更希望 `dev/` 脚本全部入库、只挡数据，把上面两行换成 `dev/*.json`、`dev/*.txt`、`dev/*.log`、`dev/*.md`，其余步骤不变。
+> 说明 ①：忽略一个目录要用 `dev/*` / `data/*` 而不是 `dev/` / `data/`——写 `dev/` 会让 git 不再进入该目录，后面的 `!dev/*.mjs` 就永远不生效（本计划第一次草稿犯过这个错，Task 1 Step 2 的验证要检查 `git ls-files dev/function-node.ts` 有输出）。
+> 说明 ②（2026-11-14 Task 1 评审后改）：草稿这里是 `dev/*` + 只放行 `dev/README.md`，评审指出后果是**公开克隆里所有"30 秒复现"命令都跑不通**（README.md:152-155 与 docs/competition-post.md:215-223 逐条引用 `dev/*.mjs`，package.json:17-18 的两个 harness 脚本直接指向 `dev/function-node.ts`），与"任何要发布的数字必须能追到留档 + 可重跑脚本"这条硬约束冲突。现在放行 `dev/*.mjs` 与 `dev/*.ts`（实测 13 个 .mjs 共 21,993 字节，凭据形状扫描零命中：它们都从 `data/.env` 读密钥，脚本体内无密钥），留档仍不入库。
+> 说明 ③：留档改落 `docs/eval-archive/`（已入库），不再落 `dev/`。理由是同一句话——"第 9 条缺陷""线上 0/3 合规"这类要发布的结论必须让评委不重打线上接口也能核；Task 2 与 Task 7 已按此改。
 
 - [ ] **Step 2: 初始化并做首个提交**
 
@@ -116,29 +127,40 @@ coverage/
 cd /f/Qoder/seccopilot
 git init -b main
 git config user.name && git config user.email   # 只读确认，不修改配置
-git add .gitignore gitignore.template README.md PROVENANCE.md package.json package-lock.json \
+git add .gitignore .gitattributes gitignore.template README.md PROVENANCE.md package.json package-lock.json \
   tsconfig.json tsconfig.functions.json vite.config.ts postcss.config.mjs index.html components.json \
-  components hooks lib public src functions scripts supabase-schema.sql supabase-retrieval-fix.sql
+  components hooks lib public src functions scripts data dev docs vendor \
+  supabase-schema.sql supabase-retrieval-fix.sql
 git add '.SecCopilot.qoder.site'
 git status --porcelain | head -30
 ```
 
-Expected: `git status --porcelain` 里**没有** `data/.env`、没有任何 `node_modules/`、没有 `dist/`、没有 `data/*.json*`。
+Expected: `git status --porcelain` 里**没有** `data/.env`、没有任何 `node_modules/`、没有 `dist/`、没有 `data/*.json*`、没有 `dev/` 的留档（只应看到 `dev/*.mjs`、`dev/*.ts`、`dev/README.md` 被加入）。
 
-- [ ] **Step 3: 写 dev/README.md，说明未入库目录里有哪些可复现脚本**
+> 说明 ④（评审后补）：`git add` 必须是"整棵树 + 靠 .gitignore 收敛"，不能靠手工列举目录——草稿这里漏了 `docs/`、`vendor/`、`data/`，于是 Step 4 的"porcelain 为空"永远不可能成立。`vendor/` 不是可选的：`src/globals.css:3` 直接 `@import "../vendor/shadcn-tailwind-4.13.0.css"`，不入库的克隆构建不起来。`data/` 里入库的只有 8 个小文件（`.env.example`、`SETUP.md`、5 个 `.py`、`requirements.txt`），129 MB 数据由 `.gitignore` 的 `data/*` 挡在外面。
+
+- [ ] **Step 3: 写 dev/README.md，说明哪些探针入库、哪些留档不入库**
 
 ```markdown
-# dev/（未入库）
+# dev/（脚本入库，留档不入库）
 
-本目录是本机一次性探针与实测留档，体积大且部分含真实站点响应，默认不提交。
-仓库里文档引用过的可复现脚本，输入与判据如下；重新生成请按此顺序：
+本目录混着两类东西：**可复现脚本**（`*.mjs`、`*.ts`，已入库）和**本机实测留档**
+（`*.json`、`*.txt`、`*.log`、`*.md`，不入库）。区分它们是因为 `package.json` 的
+`npm run dev:function` / `dev:function:node` 直接指向这里的 `function-local.ts` /
+`function-node.ts`——挡掉整个目录的话，公开仓库的 README 就是一堆跑不通的命令。
+需要长期作为证据的留档请落 `docs/eval-archive/`（已入库）。
 
 | 脚本 | 输入 | 作用 | 需要的外部条件 |
 | --- | --- | --- | --- |
+| function-node.ts / function-local.ts | 仓库当前源码 | 本地 harness 入口（Node 与 Deno 两种跑法），同一份 Function 跑在 :8000 | Node 24 / Deno；代理见 README 的 NO_PROXY 行 |
 | probe-kev-on-batch.mjs | 本地 harness :8000 | 同一 KEV 问题连跑 N 次，统计"提到 CVE-2026-21509 且给出收录日期" | 代理（Supabase）+ DashScope 不走代理 |
+| probe-kevgate.mjs / probe-kevgate2.mjs | 本地 harness :8000 | 复现"检索里有 21509 但正文不提"那道题；作品帖第六节用它推翻过一条已发布结论 | 同上 |
 | check-kev-samples.mjs | kev-on-batch.json / kev-off-batch.json / kev-on-*.txt | 离线重算 KEV 遵守率，区分"检索到"与"照着说" | 无网络 |
 | check-title-criterion.mjs | docs/eval-archive/*.json | 核对 title 判据的判定翻转数（当前 8 行 0 翻转） | 无网络 |
 | probe-websearch-shape.mjs | DashScope 原生协议 | 看 plugins/search 执行位与 search_info 来源数是否一致 | DashScope key |
+| probe-nvd-desc.mjs | NVD API 2.0 | 核对 CVE 描述与 published 日期（时效题 ground 的来源） | NVD 可达，不走代理 |
+| probe-attack-metadata.mjs | ATT&CK STIX | 拉技术名/阶段对照，`scripts/verify-id-name-pairs.mjs` 的 `dev/attack-names.json` 由它生成 | ATT&CK 可达 |
+| probe-embed.mjs / probe-match-documents.mjs / probe-local-chat.mjs / probe-node-proxy.mjs | 见各文件头注释 | 检索召回、RPC、响应契约、代理路径的单项探针 | 视脚本而定 |
 ```
 
 - [ ] **Step 4: 提交并验证密钥未入库**
@@ -153,12 +175,15 @@ chore: 建立 git 仓库与忽略规则，先挡住 data/.env 与 129 MB 数据�
 说明其输入与判据的 dev/README.md。
 EOF
 )"
-git ls-files | grep -Ei "\.env$|\.env\." || echo "OK：没有 .env 被追踪"
-git ls-files dev/README.md          # 必须有一行输出，否则说明 dev/* 的忽略写法挡掉了例外
+git ls-files | grep -E "(^|/)\.env$" || echo "OK：没有真 .env 被追踪"
+git ls-files dev/function-node.ts    # 必须有一行输出：package.json 的 dev:function:node 指向它
+git ls-files dev/README.md           # 必须有一行输出，否则 dev/* 的忽略写法挡掉了例外
 git ls-files | wc -l
 ```
 
-Expected: 打印 `OK：没有 .env 被追踪`，并且 `git ls-files dev/README.md` 输出 `dev/README.md`；`git log --oneline` 有 1 条提交；工作树 `git status --porcelain` 为空（`dev/` 其余内容、`data/`、`.superpowers/` 已被忽略）。
+Expected: 打印 `OK：没有真 .env 被追踪`；`git ls-files dev/` 共 16 行（13 个 `.mjs` + 2 个 `.ts` + `README.md`）；`git log --oneline` 有 1 条提交；工作树 `git status --porcelain` 为空。
+
+> 说明 ⑤（评审后改）：这里原来写的是 `grep -Ei "\.env$|\.env\."`，它会命中 `data/.env.example` 并打印出来，看起来像"密钥被追踪"。实际应当追踪的正是这个占位模板（README 的复现步骤要 `cp data/.env.example data/.env`，且文件内只有 `your_…` 形式的占位值），所以判据改成只认真名 `.env`。**"密钥没进历史"的真正证据不是这条 grep**，而是：逐个读出 `data/.env` 的四个值、在追踪文件里计数命中（必须全 0，`HTTP_PROXY` 的值是本机代理地址、允许出现）。这条才是 Task 11 交付清单里的硬检查。
 
 - [ ] **Step 5: 把"公开前必须轮换 key"写进作品帖任务清单**
 
@@ -177,7 +202,7 @@ git add docs/competition-post.md && git commit -m "docs: 记录公开仓库前�
 
 ### Task 2: 把今天线上的 KEV 退化回答变成可重跑的测量，并记为第 9 条缺陷
 
-**测量到的事实（2026-11-14，本机出口）：** 线上站点 `POST /functions/v1/app?action=chat`、问题"2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？"、`mode` 默认 → `{coverage:'mixed', search_used:true, nSrc:5, nWeb:2, note:'本地知识库未有效覆盖本题，回答主要依据网络检索'}`，回答正文是"知识库与网络检索均未覆盖 2026 年 CISA 关于 Office 产品漏洞的新增信息。"——**正文里一个 CVE 编号都没有**，而 `search_used=true` 且本地检索结果里明明有 5 条含 CVE-2026-21509 的资料。两个网络来源是"微博正文"与一条乱码的新华网链接。这与本地 harness 那 10 次全命中（`dev/kev-on-batch.json`）形成反差：**那道旗标题在线上目前是答不好的**。留档见 `dev/online-kev-2026-11-14.json`。
+**测量到的事实（2026-11-14，本机出口）：** 线上站点 `POST /functions/v1/app?action=chat`、问题"2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？"、`mode` 默认 → `{coverage:'mixed', search_used:true, nSrc:5, nWeb:2, note:'本地知识库未有效覆盖本题，回答主要依据网络检索'}`，回答正文是"知识库与网络检索均未覆盖 2026 年 CISA 关于 Office 产品漏洞的新增信息。"——**正文里一个 CVE 编号都没有**，而 `search_used=true` 且本地检索结果里明明有 5 条含 CVE-2026-21509 的资料。两个网络来源是"微博正文"与一条乱码的新华网链接。这与本地 harness 那 10 次全命中（`dev/kev-on-batch.json`）形成反差：**那道旗标题在线上目前是答不好的**。留档见 `docs/eval-archive/online-kev-2026-11-14.json`。
 
 不做这件事的后果：演示视频和作品帖都会点开这道题，而它现在线上给的是零编号的"未覆盖"。
 
@@ -187,7 +212,7 @@ git add docs/competition-post.md && git commit -m "docs: 记录公开仓库前�
 
 **Interfaces:**
 - Consumes: `${SITE}/functions/v1/app?action=chat`；环境变量 `SITE`（默认线上站点）、`N`（默认 6）。
-- Produces: `dev/online-kev-<YYYY-MM-DD>.json`（逐次留档 + 汇总），退出码 0 = 每次都给出编号与收录日期、非 0 = 存在不合规；stdout 最后一行是可复制进文档的结论文本。
+- Produces: `docs/eval-archive/online-kev-<YYYY-MM-DD>.json`（逐次留档 + 汇总），退出码 0 = 每次都给出编号与收录日期、非 0 = 存在不合规；stdout 最后一行是可复制进文档的结论文本。
 
 - [ ] **Step 1: 写探针脚本（失败时先让它跑出今天的真实结果）**
 
@@ -199,7 +224,7 @@ git add docs/competition-post.md && git commit -m "docs: 记录公开仓库前�
 //       SITE=http://127.0.0.1:8000 node scripts/probe-online-kev.mjs     # 修完代码后本机自证
 // 判据与 scripts/eval.mjs 的 KEV 题保持一致：CVE-2026-21509 + 2026-01-26（或中文写法），
 // 外加"类型对得上"（Security Feature Bypass / 安全功能绕过）。
-// 退出码：不合规次数 > 0 → 1。留档落 dev/online-kev-<date>.json（dev/ 不入库）。
+// 退出码：不合规次数 > 0 → 1。留档落 docs/eval-archive/online-kev-<date>.json（此目录入库，评委不重打接口也能核）。
 import { writeFileSync } from "node:fs";
 
 const SITE = (process.env.SITE ?? "https://seccopilot-kpa8w0w9u7e.qoder.zone").replace(/\/+$/, "");
@@ -211,7 +236,7 @@ const DATE = /2026[-/年]0?1[-/月]26/;              // 2026-01-26 / 2026/01/26 
 const TYPE = /Security Feature Bypass|安全功能绕过/i;
 const DOWNGRADE = /资料未说明|未说明其在野利用|未在野利用|未明确标注|无公开|尚无/;
 
-const OUT = `dev/online-kev-${new Date().toISOString().slice(0, 10)}.json`;
+const OUT = `docs/eval-archive/online-kev-${new Date().toISOString().slice(0, 10)}.json`;
 const rows = [];
 for (let i = 0; i < N; i++) {
   let row;
@@ -274,7 +299,7 @@ Expected: 每次 `hasId:false`、`nSrc:5`、`srcHasId:true`，最后一行 `0/3 
 ```markdown
 - `node scripts/probe-online-kev.mjs`：线上（或 `SITE=http://127.0.0.1:8000` 本机）KEV 旗标题连跑 N 次
   （`N=` 可调，默认 6），逐次记录"给出编号 / 给出收录日期 / 类型对得上 / 是否降级表述 / 检索结果里本来有没有该编号"，
-  留档 `dev/online-kev-<date>.json`，有不合规即退出码 1。2026-11-14 线上 `N=3` 结果 0/3 合规、3/3 检索命中，
+  留档 `docs/eval-archive/online-kev-<date>.json`，有不合规即退出码 1。2026-11-14 线上 `N=3` 结果 0/3 合规、3/3 检索命中，
   即第 9 条缺陷的证据。
 ```
 
@@ -1082,7 +1107,7 @@ search_used 只表示 plugins.search 执行过，原先据此写'结合了网络
 
 **Interfaces:**
 - Consumes: NVD CVE 2.0 接口（`services.nvd.nist.gov`，无 key 时限流约 5 请求/30 秒，脚本必须串行 + 间隔，沿用 `scripts/verify-suspects.mjs:65` 的 `sleep(7000)` 做法）、CISA KEV feed（本机走代理）。
-- Produces: stdout 打印"该改成什么"的建议片段（人复制进 eval.mjs），并落 `dev/time-grounds-<date>.json`；退出码 0 = 基准全部仍成立，1 = 有变化需要人工确认。
+- Produces: stdout 打印"该改成什么"的建议片段（人复制进 eval.mjs），并落 `docs/eval-archive/time-grounds-<date>.json`；退出码 0 = 基准全部仍成立，1 = 有变化需要人工确认。
 
 - [ ] **Step 1: 写刷新脚本**
 
@@ -1131,7 +1156,7 @@ if (office2026.length > 1) checked.changes.push(`旗标题 expect.pattern 应覆
 const thisWeek = feed.vulnerabilities.filter((x) => x.dateAdded > new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10));
 console.log(`最近 7 天 KEV 新增 ${thisWeek.length} 条（"本周有没有新披露高危漏洞"的参考事实）`);
 
-writeFileSync(`dev/time-grounds-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(checked, null, 1), "utf-8");
+writeFileSync(`docs/eval-archive/time-grounds-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(checked, null, 1), "utf-8");
 if (checked.changes.length) {
   console.log(`\n需要人工确认的基准变化：\n- ${checked.changes.join("\n- ")}`);
   process.exit(1);
@@ -1152,7 +1177,7 @@ Expected: 打印 `KEV 目录：版本 2026.11.13，共 1781 条`、2026 年微�
 `scripts/eval.mjs`：
 
 ```js
-// 时效题基准核对日：2026-11-14（node scripts/refresh-time-grounds.mjs，留档 dev/time-grounds-2026-11-14.json）。
+// 时效题基准核对日：2026-11-14（node scripts/refresh-time-grounds.mjs，留档 docs/eval-archive/time-grounds-2026-11-14.json）。
 // 核对时 KEV 目录版本 2026.11.13 / 1781 条；2026 年微软 Office 有 3 条 KEV：
 //   CVE-2026-21509（2026-01-26）、CVE-2026-21514（2026-02-10）、CVE-2026-124194（2026-11-10，本地库无）。
 // 判据从"只认 21509"改为"三条任一 + 类型对得上"，并额外要求给出该条自身的收录日期：
@@ -1165,7 +1190,7 @@ Expected: 打印 `KEV 目录：版本 2026.11.13，共 1781 条`、2026 年微�
 "本周有没有新披露的高危漏洞？"那条把 `ground` 改为：
 
 ```js
-    ground: `核对日 2026-11-14：KEV 目录 2026.11.13，最近 7 天新增见 dev/time-grounds-2026-11-14.json；把 8 月及更早的收录记录说成"本周"即判错（off 模式实测踩过），承认"本地库未覆盖近 7 天、无法确认"同样合格` },
+    ground: `核对日 2026-11-14：KEV 目录 2026.11.13，最近 7 天新增见 docs/eval-archive/time-grounds-2026-11-14.json；把 8 月及更早的收录记录说成"本周"即判错（off 模式实测踩过），承认"本地库未覆盖近 7 天、无法确认"同样合格` },
 ```
 
 同时把 `failIf` 里的"早于本周"边界从写死 `2026-0[1-8]-` 改成按核对日推导的常量，避免下个月又过期：
@@ -1235,7 +1260,7 @@ git commit -m "chore(eval): 时效题基准核对到 2026-11-14（KEV 2026.11.13
 2026-11-10 写死的基准已过期：KEV 目录里 2026 年微软 Office 从 2 条变 3 条，
 CVE-2026-124194（11-10 收录）本地库没有。expect.pattern 覆盖三条并集、title 判据补对应类型，
 '本周'的日期边界改由 EVAL_DAY 推导而不是写死 2026-0[1-8]-。刷新脚本会串行打 NVD（限流 5 次/30 秒）
-和 CISA 目录，核对结果落 dev/time-grounds-<date>.json。"
+和 CISA 目录，核对结果落 docs/eval-archive/time-grounds-<date>.json。"
 ```
 
 ---
@@ -1252,7 +1277,7 @@ CVE-2026-124194（11-10 收录）本地库没有。expect.pattern 覆盖三条�
 
 **Interfaces:**
 - Consumes: MCP `mcp__plugin_sites_qoder_sites__prepare_site` / `publish_site` / `get_publish_status` / `get_operation`（参数名是 `operationId`，不是 `operation_id`；11-14 已因这个拼写被拒一次）。
-- Produces: 线上站点包含 `git log` 里 `HEAD` 的那次提交；`dev/online-kev-<date>.json` 合规；`npm test` 默认站点全绿。
+- Produces: 线上站点包含 `git log` 里 `HEAD` 的那次提交；`docs/eval-archive/online-kev-<date>.json` 合规；`npm test` 默认站点全绿。
 
 - [ ] **Step 1: 发布前把"可本机自证"的部分全绿**
 

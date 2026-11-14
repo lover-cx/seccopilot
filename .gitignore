@@ -8,11 +8,21 @@ dist/
 .qoder-sites/
 .qoder-sites.json
 
-# 数据与探针留档：体积大（data/ 129 MB，phase2_emb.jsonl 单文件 103 MB）或含凭据，不入库
-data/*.json
-data/*.jsonl
-data/.env
+# data/：129 MB 批量数据与凭据（phase2_emb.jsonl 单文件 103 MB）。
+# 用"data/* + 逐类放行"而不是"data/*.json + data/*.jsonl"：后者是含斜杠的锚定模式，
+# * 不跨 /，data/sub/keV_snapshot.json、data/dump.sql、data/emb.json.gz 都会漏网。
+data/*
+!data/.env.example
+!data/SETUP.md
+!data/requirements.txt
+!data/*.py
+
+# dev/：本机探针。这里放的是**代码**——package.json 的 dev:function / dev:function:node
+# 直接指向 dev/function-local.ts 与 dev/function-node.ts，README 的"30 秒复现"又引用 dev/*.mjs；
+# 全挡掉的话公开仓库的 README 就是一堆跑不通的命令。留档类（json/txt/md/log）一律不入库。
 dev/*
+!dev/*.mjs
+!dev/*.ts
 !dev/README.md
 
 # SDD 工作区（本计划的 ledger / brief / review package，是临时草稿）

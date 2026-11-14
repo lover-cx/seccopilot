@@ -227,5 +227,7 @@ node dev/check-kev-samples.mjs                            # 读已有留档正�
 
 两点如实说明：① 关于"本地能不能测检索链路"，我们之前写的是"本机直连 Supabase 不通，只能发布后打线上"——这句到 11-12 为止是错的：Supabase 直连确实不通（`ECONNRESET`），但 Node 24 的全局 fetch 默认不认代理变量，加上 `NODE_USE_ENV_PROXY=1` 再指到 Clash 就通了，DashScope 与 NVD 反过来要用 `NO_PROXY` 绕开代理。所以上面这套本地命令量到的是真实检索 + 真实模型，不是 mock。② 密钥只在 Supabase SQL Editor 与 Qoder Sites Settings 里由本人填写，脚本统一从 `data/.env` 读取，代码库中不含任何明文密钥（仓库公开前请先轮换 DashScope key）。数据库结构见 `supabase-schema.sql`，检索召回修复见 `supabase-retrieval-fix.sql`。
 
-- 仓库若公开：先轮换 `data/.env` 里的 DashScope key（本目录已 gitignore，但历史提交风险要一次性堵死），
+- 仓库若公开：先轮换 `data/.env` 里的 DashScope key（gitignore 的是 `data/*` 整体屏蔽加逐类放行——只放行
+  `.env.example`、`SETUP.md`、`requirements.txt`、`*.py` 这几类不含密钥的小文件，`data/.env` 本身从不入库；
+  但历史提交风险要一次性堵死），
   并在 Sites 侧更新 `DASHSCOPE_API_KEY` Secret 后重新发布——密钥轮换会让旧 key 立刻失效，顺序不能反。
