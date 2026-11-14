@@ -1,0 +1,23 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.tsbuildinfo
+.qoder-sites/
+.qoder-sites.json
+
+# 数据与探针留档：体积大（data/ 129 MB，phase2_emb.jsonl 单文件 103 MB）或含凭据，不入库
+data/*.json
+data/*.jsonl
+data/.env
+dev/*
+!dev/README.md
+
+# SDD 工作区（本计划的 ledger / brief / review package，是临时草稿）
+.superpowers/
+
+# 本地服务日志与临时产物
+*.log
+coverage/
