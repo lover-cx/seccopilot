@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在 2026-11-30 18:00 前，把"三层来源 + 联网搜索"的安全研究助手做成**线上可演示、缺陷可复现、数字可重跑**的参赛作品：修掉今天线上实测暴露的 KEV 退化回答，收口三项已确认但待批准的契约修改，重新发布并让线上评测与本地评测同口径，最后产出演示视频与天池作品帖。
+**Goal:** 在 2026-11-30 18:00 前，把"三层来源 + 联网搜索"的安全研究助手做成**线上可演示、缺陷可复现、数字可重跑**的参赛作品：把今天实测暴露的 KEV 旗标题**非确定性**变成可重跑的测量并从代码层堵住（生成前注入目录事实 + 生成后硬校验），收口三项已确认但待批准的契约修改，重新发布并让线上评测与本地评测同口径，最后产出演示视频与天池作品帖。
 
-**Architecture:** 保持不变——React/Vite 前端 + 一个 Deno edge Function（`/functions/v1/app`，`action=chat|cve|attack|stats`）+ Supabase pgvector。知识来源仍是三层：本地库（5,397 条）→ 实时上游 API（NVD CVE 2.0；本次新增 CISA KEV 目录）→ DashScope 原生协议联网检索。本次新增的部分只落在 `functions/lib/kb.ts`（第 2 层多一个上游）与 `functions/lib/chat.ts`（生成后的 KEV 硬校验），不改前端契约字段名，只**扩展** `stats` 的失败表达与 `note` 的措辞分支。
+**Architecture:** 保持不变——React/Vite 前端 + 一个 Deno edge Function（`/functions/v1/app`，`action=chat|cve|attack|stats`）+ Supabase pgvector。知识来源仍是三层：本地库（5,397 条）→ 实时上游 API（NVD CVE 2.0；本次新增 CISA KEV 目录）→ DashScope 原生协议联网检索。本次新增的部分只落在 `functions/lib/kb.ts`（第 2 层多一个上游）与 `functions/lib/chat.ts`（生成前注入 + 生成后硬校验），不改前端契约字段名，只**扩展** `stats` 的失败表达与 `note` 的措辞分支。
 
 **Tech Stack:** TypeScript（Deno 运行时 + Node 24 type-stripping 双跑）、React 19 + Vite 8、Supabase REST/RPC、DashScope text-generation（`enable_search`）、Node 内置 `node:test`（零依赖）、Node 脚本做评测与证据核对。
 
@@ -20,6 +20,7 @@
 - curl/脚本打 Function 必须带 `Origin`（线上为 `https://seccopilot-kpa8w0w9u7e.qoder.zone`），基址是 `${SITE}/functions/v1/app`；打站点根路径会拿到 SPA HTML，`POST /` 返回 405。
 - 同一校验连续两次同样超时即判定平台侧问题，直接报阻塞，不反复重试（发布通道 2026-11-12 已在 `verify_artifact` 上失败 5 次）。
 - 证据纪律：任何要发布的数字必须能追到留档 + 可重跑脚本；**未发布的修复不得写成已达成的分数**；两轮结果较差的那一轮作为主口径；自己写错的结论要在文档里撤回而不是删掉。
+- 归因纪律（2026-11-14 由第 8/9 条缺陷学到）：一条线上行为必须同时标明 **`mode`（auto/on/off）** 与它走的**代码分支**（`chat.ts:353` 充分分支 vs `chat.ts:356` 不充分分支 vs `chat.ts:364` off 固定话术）。这三条话术长得很像，混着写就会把"某一次 off 模式的固定兜底话术"当成"检索命中却没说"的线上退化证据。留档文件名也要带上模式（`online-kev-*` / `local-kev-*` / `*-empty-retrieval-*`），本机 harness 的结果绝不写进线上证据文件。
 - 运行时：`engines.node` = `^22.13.0 || >=24.0.0`；测试零依赖（只用 `node:test` + `node:assert/strict`）；`SKIP_LLM=1 npm test` 必须继续可跑（12 项、跳 17 项、零模型费用）。
 - 已发布站点线上证据文件是 `docs/eval-archive/deployed-prompt-only-2026-11-12.json`；`docs/eval-report.json` 当前装的是本地 harness 闸门版留档，**不要让子集运行覆盖它**。
 
@@ -29,15 +30,15 @@
 
 新建：
 
-- `.gitignore` — 由仓库里已有的 `gitignore.template` 落地，追加 `data/` 大文件与 `dev/` 一次性探针留档的排除策略（Task 1）。
-- `scripts/probe-online-kev.mjs` — 把"线上 KEV 那道题现在答成什么样"变成可重跑、可计数、带留档的测量（Task 2）。
+- `.gitignore` — **不采用**仓库里那份 `gitignore.template`（它按扩展名挡 dist/src 下的 `.css/.html`，与 `package.json` 的构建入口冲突）。Task 1 实际落地的是**斜杠安全的白名单**：`data/*` + 逐类放行、`dev/*` + `!dev/*.mjs` + `!dev/*.ts` + `!dev/README.md`、外加 `.superpowers/`；证据留档一律落入库的 `docs/eval-archive/`（Task 1，已完成 @ `b905e96`）。
+- `scripts/probe-online-kev.mjs` — 把"线上 KEV 那道题现在答成什么样"变成可重跑、可计数、按 run 累加留档的测量，判据含 21514/124194 观察项（Task 2）。
 - `scripts/refresh-time-grounds.mjs` — 按当前日期重核时效题基准（NVD published / KEV catalogVersion / ATT&CK 版本），输出该改的 `expect` 与 `ground`（Task 7）。
 - `dev/kev-feed-cache.json` — 已存在（今天拉的真实 CISA 目录，1,854,379 字节，catalogVersion `2026.11.13`，count 1781），作为 Task 3 的离线基准数据；不入库。
 
 修改：
 
-- `functions/lib/kb.ts` — 新增第 2 层的 KEV 上游：`kevCatalog()`（带 TTL 缓存）与 `kevLookup(ids)`（Task 3）。
-- `functions/lib/chat.ts` — 新增 `kevAssertedIds(answer)` 纯函数 + 生成后的 KEV 硬校验与更正文本；`note` 增加"检索执行了但零来源"分支（Task 4、Task 6）。
+- `functions/lib/kb.ts` — 新增第 2 层的 KEV 上游：`kevCatalog()`（TTL 缓存，拉不到返回 `null`）、`kevDocs()` / `kevFromCatalog()` / `kevScopeMatches()`（纯函数，按问题范围查目录，不要求问题里有编号）、`kevLookup(ids)`（Task 3）。
+- `functions/lib/chat.ts` — **两支**：① `collectLocal()` 生成前把目录里查到的 KEV 事实注入证据清单（触发条件只有 `KEV_HINT.test(question)`）；② `kevAssertedIds()` / `kevCorrection()` 生成后硬校验与更正，加 `note` 的核验状态。`note` 另有"检索执行了但零来源"分支（Task 4、Task 6）。
 - `functions/lib/routes.ts` — `stats()` 不再把上游失败 `catch` 成 0；抽出可单测的 `aggregateStats()`（Task 5）。
 - `functions/handler.ts` — 承接 `stats` 的非 200 返回（Task 5）。
 - `src/components/StatsPanel.tsx` — 上游失败时不再渲染成"0 条"，改渲染缺口说明（Task 5）。
@@ -264,7 +265,9 @@ const DOWNGRADE = /资料未说明|未说明其在野利用|未在野利用|未�
 const WATCH = { "CVE-2026-21514": /CVE-2026-21514/i, "CVE-2026-124194": /CVE-2026-124194/i };
 
 const DAY = new Date().toISOString().slice(0, 10);
-const OUT = `docs/eval-archive/online-kev-${DAY}.json`;
+// 默认写线上证据文件；打本机 harness 时必须用 OUT= 换文件——同一天把本机行并进线上文件，
+// 第 9 条的"线上 9/9 绿"就分不清哪几行是线上、哪几行是自己机器上改过代码之后的结果了。
+const OUT = process.env.OUT ?? `docs/eval-archive/online-kev-${DAY}.json`;
 const RUN_ID = `${new Date().toISOString().replace(/[:.]/g, "-")}_${MODE}_${SITE.replace(/^\w+:\/\//, "").replace(/\W+/g, "-")}`;
 
 const rows = [];
@@ -382,6 +385,19 @@ Expected: 全绿时退出码 0、有红行时退出码 1；`tail` 最后一行�
 改法：把这个入库文件换成**原始响应的逐字节副本**包在 `{source, capturedAt, note, raw}` 里（`raw` 原样，不加不减），
 摘要字段一律由 `raw` 现推；于是评委能自己数出"5 条 0.3 分来源、无 21509、`note` 是 `!sufficient` 那条话术"，
 而 `srcHasId` 显示为 `false`。相应地，第 9 条正文里凡是只存在于 `dev/` 的引用，要么改成入库文件名，要么明写"入库副本见 …"。
+
+- [ ] **Step 6: 把 Task 1 计划里写过、却从未落地的 `dev/README.md` 两句补上**
+
+Task 1 Step 3 的计划正文要求 `dev/README.md` 说明"脚本入库、留档不入库"，并给出两条复现前提；实际提交只写了忽略规则，
+于是 README 与作品帖里被当作可复现证据的 `dev/check-kev-samples.mjs` / `dev/probe-kev-on-batch.mjs` 在干净克隆里会因为
+`existsSync` 静默跳过被忽略的输入、打印"样本 0 次"。本轮补两句即可（不必等 Task 9）：
+
+```markdown
+- 这些脚本的**输入留档不入库**（`dev/*` 被忽略，只有 `*.mjs`/`*.ts`/`README.md` 入库）。干净克隆里要先跑
+  `node dev/probe-kev-on-batch.mjs` 生成 `dev/kev-on-batch.json`，`node dev/check-kev-samples.mjs` 才会有非零样本；
+  直接跑 `check-kev-samples.mjs` 会打印"样本 0 次"，那不是"遵守率 0%"，是**没输入**。
+- 需要作为证据发布的留档一律写进 `docs/eval-archive/`（入库），不要留在 `dev/`。
+```
 
 ---
 
@@ -850,8 +866,12 @@ export function kevCorrection(
   const missing = [...known.values()]
     .filter((e) => !text.toUpperCase().includes(e.cveID) || !text.includes(e.dateAdded));
   if (missing.length) {
-    const listed = missing.map((e) => `${e.cveID}（${e.vendorProject} ${e.product}，${e.vulnerabilityName}，KEV 收录 ${e.dateAdded}、修复期限 ${e.dueDate}）`);
-    addenda.push(`【代码核验的 KEV 事实】本地资料与 CISA 目录交叉核验后确认在野利用：${listed.join("；")}。`
+    // 最多列 3 条：这条更正会被直接拼到回答后面，而 system 规则 4 要求模型"控制在 320 字内"。
+    // 全列会把答案撑成目录摘要；超过 3 条时列前 3 条（按收录日期倒序）并说明还有几条。
+    const fmt = (e: KevEntry) => `${e.cveID}（${e.vendorProject} ${e.product}，${e.vulnerabilityName}，KEV 收录 ${e.dateAdded}、修复期限 ${e.dueDate}）`;
+    const listed = missing.slice(0, 3).map(fmt);
+    const more = missing.length > 3 ? `；另有 ${missing.length - 3} 条同厂商/产品在 KEV 目录中，见出处链接` : "";
+    addenda.push(`【代码核验的 KEV 事实】本地资料与 CISA 目录交叉核验后确认在野利用：${listed.join("；")}${more}。`
       + `此条由代码依据 KEV 目录字段给出，不依赖模型是否记得。`);
   }
   if (!addenda.length) return { answer: text, corrected: false, reason: "clean" };
@@ -859,7 +879,12 @@ export function kevCorrection(
 }
 ```
 
-并在文件顶部 import 里加入 `kevLookup`、`KevEntry`、`KEV_SNAPSHOT_VERSION`（与现有 `nvdLive` 同行从 `./kb.ts` 导入）。
+并在文件顶部 import 里加入 `kevLookup`、`KevEntry`、`KEV_SNAPSHOT_VERSION`，以及 Step 4 要用的
+`kevCatalog`、`kevDocs`、`kevScopeMatches`（与现有 `nvdLive` 同行从 `./kb.ts` 导入）。
+
+> **长度口径（必须写进 `README.md` 与作品帖，不能只留在代码注释里）：** "320 字内"是对**模型生成的正文**的要求，
+> `【代码核验的 KEV 事实】` / `【代码更正】` 这两段是代码在生成之后追加的，不受该纪律约束，所以带更正的回答可以超过 320 字。
+> 演示时若看到"回答比别处长"，那是核验段而非模型啰嗦。这条区分要主动说明，否则评委会以为输出纪律没生效。
 
 - [ ] **Step 4: 生成前把目录事实注入证据清单（第 9 条缺陷的真修复在这里，不在下一步的硬校验里）**
 
@@ -969,10 +994,15 @@ NODE_USE_ENV_PROXY=1 HTTP_PROXY=http://127.0.0.1:7897 HTTPS_PROXY=http://127.0.0
   NO_PROXY=dashscope.aliyuncs.com,nvd.nist.gov,services.nvd.nist.gov \
   npm run dev:function:node > dev/harness-8000.log 2>&1 &
 sleep 8 && curl -s -o /dev/null -w "harness=%{http_code}\n" http://127.0.0.1:8000/functions/v1/app?action=stats
-SITE=http://127.0.0.1:8000 N=4 node scripts/probe-online-kev.mjs; echo "exit=$?"
+SITE=http://127.0.0.1:8000 MODE=off N=4 \
+  OUT=docs/eval-archive/local-kev-$(date +%F).json \
+  node scripts/probe-online-kev.mjs; echo "exit=$?"
 ```
 
 Expected: `harness=200`；探针 4 次里 `hasId && hasDate && hasType` 全真，退出码 0。
+`OUT=` 是必需的：默认文件名装的是**线上**证据，把本机 harness 的行并进去之后，第 9 条里"线上 9/9 绿"
+就无法与"我改过代码的本机结果"区分（评审 Important 8）。本机结果另存 `local-kev-<date>.json`，
+并在 `docs/competition-post.md` 里按本机文件引用。
 这一支现在由**两条**机制共同保证：Step 4 的注入让正文一开始就有可照抄的编号，Step 5 的硬校验在漏说时补上。
 若仍 <4，先单独跑 Step 4 末尾那条 `mode=off` 的 curl 定位是哪一支没生效（`y124194` 只可能来自注入），
 再把 4 次结果写进 `docs/competition-post.md` 而不是调判据放行——**这是硬校验，允许它红**。
