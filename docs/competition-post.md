@@ -226,3 +226,6 @@ node dev/check-kev-samples.mjs                            # 读已有留档正�
 不带 `SITE=` 时，`npm test` 与 `eval.mjs` 默认打线上站点 `https://seccopilot-kpa8w0w9u7e.qoder.zone`；`EVAL_JSON=` 决定读/写哪一份留档，`BASELINE_JSON=` 让报告附一节"同一判分代码打两份留档"的对照。
 
 两点如实说明：① 关于"本地能不能测检索链路"，我们之前写的是"本机直连 Supabase 不通，只能发布后打线上"——这句到 11-12 为止是错的：Supabase 直连确实不通（`ECONNRESET`），但 Node 24 的全局 fetch 默认不认代理变量，加上 `NODE_USE_ENV_PROXY=1` 再指到 Clash 就通了，DashScope 与 NVD 反过来要用 `NO_PROXY` 绕开代理。所以上面这套本地命令量到的是真实检索 + 真实模型，不是 mock。② 密钥只在 Supabase SQL Editor 与 Qoder Sites Settings 里由本人填写，脚本统一从 `data/.env` 读取，代码库中不含任何明文密钥（仓库公开前请先轮换 DashScope key）。数据库结构见 `supabase-schema.sql`，检索召回修复见 `supabase-retrieval-fix.sql`。
+
+- 仓库若公开：先轮换 `data/.env` 里的 DashScope key（本目录已 gitignore，但历史提交风险要一次性堵死），
+  并在 Sites 侧更新 `DASHSCOPE_API_KEY` Secret 后重新发布——密钥轮换会让旧 key 立刻失效，顺序不能反。
