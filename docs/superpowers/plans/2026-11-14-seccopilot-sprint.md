@@ -203,114 +203,185 @@ git add docs/competition-post.md && git commit -m "docs: 记录公开仓库前�
 
 ### Task 2: 把今天线上的 KEV 退化回答变成可重跑的测量，并记为第 9 条缺陷
 
-**测量到的事实（2026-11-14，本机出口）：** 线上站点 `POST /functions/v1/app?action=chat`、问题"2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？"、`mode` 默认 → `{coverage:'mixed', search_used:true, nSrc:5, nWeb:2, note:'本地知识库未有效覆盖本题，回答主要依据网络检索'}`，回答正文是"知识库与网络检索均未覆盖 2026 年 CISA 关于 Office 产品漏洞的新增信息。"——**正文里一个 CVE 编号都没有**，而 `search_used=true` 且本地检索结果里明明有 5 条含 CVE-2026-21509 的资料。两个网络来源是"微博正文"与一条乱码的新华网链接。这与本地 harness 那 10 次全命中（`dev/kev-on-batch.json`）形成反差：**那道旗标题在线上目前是答不好的**。留档见 `docs/eval-archive/online-kev-2026-11-14.json`。
+**测量到的事实（2026-11-14，本机出口，实测之后由本任务自己更正）：** 线上站点 `POST /functions/v1/app?action=chat`、
+问题"2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？"。
 
-不做这件事的后果：演示视频和作品帖都会点开这道题，而它现在线上给的是零编号的"未覆盖"。
+- 计划初稿在这里写的是："`mode` 默认 → `nSrc:5` 且本地检索结果里明明有 5 条含 CVE-2026-21509 的资料，正文却零编号，
+  两个网络来源是微博正文与乱码新华网链接，**这道旗标题线上答不好**"。**这句是错的，保留以自证。**
+  它把一次 `mode:"on"` 抓取（`dev/online-kev-2026-11-14.json`，5 条来源全是 `keyword()` 兜底的 0.3 分、
+  标题里一条都没有 21509，走 `!sufficient` 分支）当成了"检索命中但回答没用上"。那份留档恰恰说明检索**没**命中。
+- 探针实测（`docs/eval-archive/online-kev-2026-11-14.json`，`MODE=on` 共 9 行）：9/9 给出
+  `CVE-2026-21509 + 2026-01-26 + Security Feature Bypass`、9/9 `srcHasId` 真、9/9 `note` 是"充分"分支；
+  `N=3` 全绿后按扩样规则加到 6，仍 6/6 全绿。
+- 所以这条的真实性质是**线上非确定性**：同一 mode 当天既能给出零编号的"未覆盖"，也能 9 次全绿。
+  另有两处探针没判的东西必须一起记下：目录里 2026 年微软 Office 有 3 条，9 次回答**全部没提 `CVE-2026-21514`**；
+  充分分支的 `note` 固定写着"网络来源未经知识库校验"，而线上跑的仍是加闸门之前的 prompt——**这两条在发布前后都别当成已解决**。
+
+不做这件事的后果：演示视频和作品帖都会点开这道题。它今天线上能给对，但我们无法解释为什么当天早些时候它给的是零编号，
+也无法保证录屏那一次不是那一次。没有可重跑的测量，第 9 条就只能写成一句印象。
 
 **Files:**
 - Create: `scripts/probe-online-kev.mjs`
-- Modify: `docs/competition-post.md`（第六节缺陷清单加第 9 条）、`README.md`（脚本清单加一条）
+- Modify: `docs/competition-post.md`（第六节加第 9 条 + 收窄第 8 条）、`README.md`（脚本清单加一条）、`docs/eval-archive/*`
 
 **Interfaces:**
-- Consumes: `${SITE}/functions/v1/app?action=chat`；环境变量 `SITE`（默认线上站点）、`N`（默认 6）。
-- Produces: `docs/eval-archive/online-kev-<YYYY-MM-DD>.json`（逐次留档 + 汇总），退出码 0 = 每次都给出编号与收录日期、非 0 = 存在不合规；stdout 最后一行是可复制进文档的结论文本。
+- Consumes: `${SITE}/functions/v1/app?action=chat`；环境变量 `SITE`（默认线上站点）、`N`（默认 6）、`MODE`（默认 `on`，与失败留档同模式）。
+- Produces: `docs/eval-archive/online-kev-<YYYY-MM-DD>.json`，形状 `{site, q, runs:[{runId, mode, site, ok, total, srcHasId, watch, rows:[…]}]}`——
+  **按天累加、按 `runId` 分次，不覆盖历史运行**；每行都带 `mode/http/coverage/searchUsed/note/nSrc/nWeb/srcHasId/srcTitles/srcSims/hasId/hasDate/hasType/degraded/watch/webTitles/answer`，
+  非 200 / 非 JSON / 抛错都记成显式不合规行（`badResponse` 或 `error`）。退出码 0 = 本次 run 全合规，非 0 = 存在不合规。
+  `srcHasId` 只看来源标题（响应契约里没有正文字段，见 `chat.ts:11-18`）。stdout 最后一行给出 `ok/N`、`srcHasId` 计数与 21514/124194 观察项。
 
 - [ ] **Step 1: 写探针脚本（失败时先让它跑出今天的真实结果）**
 
-新建 `scripts/probe-online-kev.mjs`：
+新建 `scripts/probe-online-kev.mjs`。（下面是**最终形状**：第一版按"默认不带 mode + 每次运行覆盖同日留档 + srcHasId 读 s.content"写，
+评审指出三处都不成立——响应契约里没有 `content` 字段（`chat.ts:11-18` 的 `SourceRef` 只有 title/url/category/similarity/live）、
+同一天第二次运行会把上一次的红行覆盖掉、不传 `mode` 时服务端 `normalizeMode` 归成 `auto` 而不是失败留档用的 `on`。
+以下版本按 `d2d619d..HEAD` 的修复轮落地。）
 
 ```js
-// 线上 KEV 旗标题探针：同一问题连跑 N 次，逐次留档并判定"给出编号 + 给出 KEV 收录日期"。
-// 用法：SITE=https://seccopilot-kpa8w0w9u7e.qoder.zone N=6 node scripts/probe-online-kev.mjs
-//       SITE=http://127.0.0.1:8000 node scripts/probe-online-kev.mjs     # 修完代码后本机自证
-// 判据与 scripts/eval.mjs 的 KEV 题保持一致：CVE-2026-21509 + 2026-01-26（或中文写法），
-// 外加"类型对得上"（Security Feature Bypass / 安全功能绕过）。
-// 退出码：不合规次数 > 0 → 1。留档落 docs/eval-archive/online-kev-<date>.json（此目录入库，评委不重打接口也能核）。
-import { writeFileSync } from "node:fs";
+// 线上 KEV 旗标题探针：同一问题连跑 N 次，逐次留档并判定"给出编号 + 给出收录日期 + 类型对得上、未降级"。
+// 用法：N=6 node scripts/probe-online-kev.mjs                                  # 默认线上站点、默认 MODE=on
+//       SITE=http://127.0.0.1:8000 MODE=off N=4 node scripts/probe-online-kev.mjs   # 本机自证；off 可排除网络因素
+// 判据与 scripts/eval.mjs 的 KEV 题一致：CVE-2026-21509 + 2026-01-26 + Security Feature Bypass / 安全功能绕过。
+// MODE 默认 "on"：与 docs/eval-archive/online-kev-empty-retrieval-2026-11-14.json 那条失败留档同模式，
+// 这样"同一模式、曾经红、现在绿"才是可比的；auto 模式请显式 MODE=auto 并另存一份。
+// 留档按天累加：同一天第二次运行追加为新 run（runId 含时间、MODE、站点），绝不覆盖既有 run 的行。
+// 退出码：本次 run 有不合规 → 1。HTTP 非 200 / 非 JSON / HTML 响应都记成显式不合规行，不静默算通过。
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const SITE = (process.env.SITE ?? "https://seccopilot-kpa8w0w9u7e.qoder.zone").replace(/\/+$/, "");
 const N = Number(process.env.N ?? 6);
+const MODE = process.env.MODE ?? "on";                 // 直接进请求体，由服务端 normalizeMode 处理
 const Q = "2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？";
 const HEADERS = { Origin: SITE, Referer: `${SITE}/`, "Content-Type": "application/json" };
 const ID = /CVE-2026-21509/i;
-const DATE = /2026[-/年]0?1[-/月]26/;              // 2026-01-26 / 2026/01/26 / 2026年1月26日
+const DATE = /2026[-/年]0?1[-/月]26/;                  // 2026-01-26 / 2026/01/26 / 2026年1月26日
 const TYPE = /Security Feature Bypass|安全功能绕过/i;
-const DOWNGRADE = /资料未说明|未说明其在野利用|未在野利用|未明确标注|无公开|尚无/;
+// 降级说法要盖住"只说 NVD 收录、不说在野利用"这一类（线上 6 次里真出现过）。
+const DOWNGRADE = /资料未说明|未说明其在野利用|未在野利用|未明确标注|无公开|尚无|无法确认|未经\s*KEV|是否被利用(?:无法|不明)|知识库与网络检索均未覆盖|未覆盖/;
+// 判据只到 21509（与 scripts/eval.mjs 一致）。这两条是观察项，不进退出码：
+// 目录里 2026 年微软 Office 实际有 3 条，回答漏了 21514 仍会判绿，所以必须逐行记下来。
+const WATCH = { "CVE-2026-21514": /CVE-2026-21514/i, "CVE-2026-124194": /CVE-2026-124194/i };
 
-const OUT = `docs/eval-archive/online-kev-${new Date().toISOString().slice(0, 10)}.json`;
+const DAY = new Date().toISOString().slice(0, 10);
+const OUT = `docs/eval-archive/online-kev-${DAY}.json`;
+const RUN_ID = `${new Date().toISOString().replace(/[:.]/g, "-")}_${MODE}_${SITE.replace(/^\w+:\/\//, "").replace(/\W+/g, "-")}`;
+
 const rows = [];
 for (let i = 0; i < N; i++) {
   let row;
   try {
     const r = await fetch(`${SITE}/functions/v1/app?action=chat`, {
-      method: "POST", headers: HEADERS, body: JSON.stringify({ question: Q, category: null }),
+      method: "POST", headers: HEADERS, body: JSON.stringify({ question: Q, category: null, mode: MODE }),
       signal: AbortSignal.timeout(90000),
     });
-    const d = await r.json();
-    const a = String(d.answer ?? "");
-    row = {
-      i: i + 1, http: r.status, coverage: d.coverage, searchUsed: d.search_used, note: d.note,
-      nSrc: (d.sources ?? []).length, nWeb: (d.web_sources ?? []).length,
-      srcHasId: (d.sources ?? []).some((s) => ID.test(String(s.title ?? "") + String(s.content ?? ""))),
-      hasId: ID.test(a), hasDate: DATE.test(a), hasType: TYPE.test(a),
-      degraded: DOWNGRADE.test(a), webTitles: (d.web_sources ?? []).map((w) => w.title).slice(0, 5),
-      answer: a.slice(0, 1500),
-    };
+    const text = await r.text();
+    let d = null;
+    try { d = JSON.parse(text); } catch { /* 非 JSON：下面是显式失败行 */ }
+    if (!r.ok || !d || typeof d !== "object") {
+      row = { i: i + 1, http: r.status, badResponse: true,
+              bodyHead: text.slice(0, 160), ct: r.headers.get("content-type") ?? "",
+              hasId: false, hasDate: false, hasType: false, degraded: true };
+    } else {
+      const a = String(d.answer ?? "");
+      const src = Array.isArray(d.sources) ? d.sources : [];
+      row = {
+        i: i + 1, run: RUN_ID, http: r.status, mode: d.mode, coverage: d.coverage,
+        searchUsed: d.search_used, note: d.note,
+        nSrc: src.length, nWeb: (d.web_sources ?? []).length,
+        // 响应里没有正文可查，只有标题：srcHasId 判的就是"来源标题里有没有该编号"，不要写成能看内容。
+        srcHasId: src.some((s) => ID.test(String(s.title ?? ""))),
+        srcTitles: src.map((s) => String(s.title ?? "")).slice(0, 6),
+        srcSims: src.map((s) => s.similarity),
+        hasId: ID.test(a), hasDate: DATE.test(a), hasType: TYPE.test(a),
+        degraded: DOWNGRADE.test(a),
+        watch: Object.fromEntries(Object.entries(WATCH).map(([k, re]) => [k, re.test(a)])),
+        webTitles: (d.web_sources ?? []).map((w) => w.title).slice(0, 5),
+        answer: a.slice(0, 1500),
+      };
+    }
   } catch (e) {
-    row = { i: i + 1, error: String(e?.message ?? e).slice(0, 200) };
+    row = { i: i + 1, run: RUN_ID, http: null, badResponse: true,
+            error: String(e?.message ?? e).slice(0, 200),
+            hasId: false, hasDate: false, hasType: false, degraded: true };
   }
   rows.push(row);
-  console.log(JSON.stringify({ ...row, answer: undefined, webTitles: undefined }).slice(0, 260));
-  writeFileSync(OUT, JSON.stringify({ site: SITE, q: Q, rows }, null, 1), "utf-8");
+  console.log(JSON.stringify({ ...row, answer: undefined, webTitles: undefined, srcTitles: undefined }).slice(0, 300));
 }
+// 追加而不是覆盖：把本次 run 的行并入当天文件，历史 run 原样保留。
+const prev = existsSync(OUT) ? JSON.parse(readFileSync(OUT, "utf-8")) : { site: SITE, q: Q, runs: [] };
+const runs = (prev.runs ?? []).filter((x) => x.runId !== RUN_ID);
 const ok = rows.filter((r) => r.hasId && r.hasDate && r.hasType && !r.degraded).length;
 const retrievalOk = rows.filter((r) => r.srcHasId).length;
-console.log(`\n${SITE}：${ok}/${rows.length} 次给出「编号 + 收录日期 + 类型」且未降级；`
-  + `其中 ${retrievalOk} 次的检索结果里本来就有 CVE-2026-21509。`);
-console.log(`留档：${OUT}`);
+runs.push({ runId: RUN_ID, mode: MODE, site: SITE, startedAt: new Date().toISOString(),
+            ok, total: rows.length, srcHasId: retrievalOk,
+            watch: Object.fromEntries(Object.keys(WATCH).map((k) =>
+              [k, rows.filter((r) => r.watch?.[k]).length])), rows });
+writeFileSync(OUT, JSON.stringify({ site: SITE, q: Q, runs }, null, 1), "utf-8");
+console.log(`\n${SITE} mode=${MODE}：${ok}/${rows.length} 次给出「编号 + 收录日期 + 类型」且未降级；`
+  + `${retrievalOk}/${rows.length} 次的来源标题里本来就有 CVE-2026-21509；`
+  + `观察项 21514 ${runs.at(-1).watch["CVE-2026-21514"]}/${rows.length}、124194 ${runs.at(-1).watch["CVE-2026-124194"]}/${rows.length}。`);
+console.log(`留档：${OUT}（本次 runId=${RUN_ID}，文件内共 ${runs.length} 个 run）`);
 process.exit(ok === rows.length ? 0 : 1);
 ```
 
-- [ ] **Step 2: 跑一次，确认它复现了今天的退化（先红了才知道探针在测东西）**
+- [ ] **Step 2: 跑一次，看它到底复现不复现（先有数，再写文档）**
 
 ```bash
 cd /f/Qoder/seccopilot && N=3 node scripts/probe-online-kev.mjs; echo "exit=$?"
 ```
 
-Expected: 每次 `hasId:false`、`nSrc:5`、`srcHasId:true`，最后一行 `0/3 次给出…；其中 3 次的检索结果里本来就有 CVE-2026-21509`，`exit=1`。若某次 `hasId:true`（线上模型有随机性），把 3 次扩到 6 次再判：`N=6 node scripts/probe-online-kev.mjs`。
+Expected（本条已被 2026-11-14 的实测改掉，保留原文再更正，不当作一直是对的）：原先这里写的是"三次全红、`srcHasId` 三次全真、`exit=1`"，
+它来自计划作者对一条单样本留档的转述。**实测是 3/3 绿、按扩样规则加到 6 次仍 6/6 绿、`exit=0`**，
+而那条零编号回答出自 `mode:"on"` 的一次抓取（`dev/online-kev-2026-11-14.json`：5 条来源全是 `keyword()` 的 0.3 兜底分、
+无一条含 21509、走的是 `!sufficient` 分支）。所以这道题的真实性质是**线上非确定性**，不是"每次都答不出来"；
+第 9 条必须按实测写，且不得沿用"检索拿到了、回答没用上"那句归因——它对自己引用的那份留档都不成立。
 
 - [ ] **Step 3: 把测量结果写成第 9 条缺陷**
 
-在 `docs/competition-post.md` 第六节缺陷清单末尾追加（**注意：这条描述的是 2026-11-14 线上表现，修复在 Task 3/4，未发布前不得写成已修**）：
+在 `docs/competition-post.md` 第六节末尾追加一条。**这里不提供现成文案**（第一版提供了，而那版是假的），
+必须满足以下几条，逐条都能对着 `docs/eval-archive/` 里的文件核：
 
-```markdown
-9. **线上旗标题现在给不出编号（2026-11-14 实测）。** 同一个问题在本地 harness 连跑 10 次全部给出
-   CVE-2026-21509 与收录日期（`dev/kev-on-batch.json`），今天打线上却是"知识库与网络检索均未覆盖……"，
-   正文零编号，`search_used=true` 而两条网络来源是"微博正文"和一条乱码链接；`N=3 node scripts/probe-online-kev.mjs`
-   三次全红、`srcHasId` 三次全真——**检索拿到了，回答没用上**。上一版我们查过检索侧（留档重跑 10 次每次都捞回
-   含该编号的 5 条资料），所以这次把根因指向两处：线上跑的还是加闸门之前的 prompt；本地 KEV 快照停在
-   2026.11.09，目录里 2026 年微软 Office 已有 3 条（21509、21514、124194），第 3 条是 11-10 新增、本地库没有。
-   分别由 Task 3（KEV 现查目录）和 Task 4（回答后硬校验）处理；发布通道没通之前，这条只能以"实测到的退化"存在。
-```
+- 并存的两件事都要写：线上 `mode=on` 连跑 9 次全绿；当天早些时候同一 `mode` 的一条留档是零编号。结论是**非确定性**，不是稳定退化。
+- 显式撤回旧归因（保留错误说法、再说明它错在哪），不得改写成"一直就是这么判断的"。
+- 说清生成后硬校验挡不住这条失败路径（正文没有编号 → 断言集为空 → 无处可纠正），能救它的是 Task 4 Step 4 的生成前注入 + Task 3 的目录层。
+- 记下探针**没**判的东西：目录里 2026 年微软 Office 有 3 条，9 次回答全部没提 `CVE-2026-21514`。
+- 未发布前不得写成已修；发布通道没通之前，这条只能以"实测到的非确定性 + 尚未上线的修复"存在。
+
+**同一条改动里必须收窄第 8 条**（`docs/competition-post.md:237-240`）：第 8 条现在写的是"即便本地已有该编号的 KEV 标注，
+回答仍会说'本地库未覆盖'，且同一问题重跑 3 次可 3 次全红"。它的证据只有那条 `mode:"on"` / `!sufficient` 分支的单样本；
+`mode:"off"` 走的是另一条分支（`chat.ts:364` 固定话术"本地知识库未覆盖本题，需开启联网检索才能确认"，压根没有 `nSrc`）。
+必须按 mode / 分支把两种话术分开写，否则"重跑 3 次全红"会被读成由探针证明——探针给的是 9/9 绿。
 
 - [ ] **Step 4: README 登记脚本并重跑一次作为文档证据**
 
-`README.md` 脚本清单追加：
+`README.md` 脚本清单追加（数字必须是实测的，不许留 0/3）：
 
 ```markdown
-- `node scripts/probe-online-kev.mjs`：线上（或 `SITE=http://127.0.0.1:8000` 本机）KEV 旗标题连跑 N 次
-  （`N=` 可调，默认 6），逐次记录"给出编号 / 给出收录日期 / 类型对得上 / 是否降级表述 / 检索结果里本来有没有该编号"，
-  留档 `docs/eval-archive/online-kev-<date>.json`，有不合规即退出码 1。2026-11-14 线上 `N=3` 结果 0/3 合规、3/3 检索命中，
-  即第 9 条缺陷的证据。
+- `node scripts/probe-online-kev.mjs`：KEV 旗标题探针。`MODE`（默认 `on`，与失败留档同模式）× `N`（默认 6）连跑，
+  逐次记录"给出编号 / 给出收录日期 / 类型对得上 / 是否降级表述 / 来源标题里本来有没有该编号 / 目录里另外两条 2026 Office 有没有被提到"，
+  留档按天累加进 `docs/eval-archive/online-kev-<date>.json`（用 `runId` 区分每次运行，不覆盖历史行），有不合规即退出码 1。
+  2026-11-14 线上 `MODE=on` 共 9 行：9/9 合规、9/9 来源标题含 21509、0/9 提到 21514；另有 1 条零编号反证样本
+  （`docs/eval-archive/online-kev-empty-retrieval-2026-11-14.json`）。这就是第 9 条缺陷的证据。
 ```
 
 ```bash
-node scripts/probe-online-kev.mjs 2>&1 | tail -3
-git add scripts/probe-online-kev.mjs docs/competition-post.md README.md
-git commit -m "feat(probe): 线上 KEV 旗标题探针；docs: 记为第 9 条缺陷（未发布修复，只记实测退化）"
+node scripts/probe-online-kev.mjs 2>&1 | tail -4
+git add scripts/probe-online-kev.mjs docs/competition-post.md docs/eval-archive README.md
+git commit -m "feat(probe): 线上 KEV 旗标题探针；docs: 按实测记第 9 条（线上非确定性），撤回旧归因并收窄第 8 条"
 ```
 
-Expected: 退出码 1 且 tail 里给出 `0/N` 与 `srcHasId` 计数。
+Expected: 全绿时退出码 0、有红行时退出码 1；`tail` 最后一行同时给 `ok/N`、`srcHasId` 计数与 21514/124194 观察项。
+**再跑一次同文件必须看到两个 run**（`node -e` 数一下 `runs.length`），这是"不覆盖历史"的证据。
+
+- [ ] **Step 5: 让第 9 条引用的每个字段都能从入库文件里核**
+
+`docs/eval-archive/online-kev-empty-retrieval-2026-11-14.json` 现在是手抄摘要：它的 `srcHasId:true` 抄的是"计划作者预期会被判真"，
+不是实测（`chat.ts:11-18` 的 `SourceRef` 根本没有 `content`，标题里也没有 21509 → 实测必为 `false`）；
+第 9 条引用的 5 条 `similarity: 0.3` 也没进文件，而原始 `dev/online-kev-2026-11-14.json` 被 `.gitignore` 挡着，干净克隆里无从对照。
+改法：把这个入库文件换成**原始响应的逐字节副本**包在 `{source, capturedAt, note, raw}` 里（`raw` 原样，不加不减），
+摘要字段一律由 `raw` 现推；于是评委能自己数出"5 条 0.3 分来源、无 21509、`note` 是 `!sufficient` 那条话术"，
+而 `srcHasId` 显示为 `false`。相应地，第 9 条正文里凡是只存在于 `dev/` 的引用，要么改成入库文件名，要么明写"入库副本见 …"。
 
 ---
 
@@ -329,6 +400,9 @@ Expected: 退出码 1 且 tail 里给出 `0/N` 与 `srcHasId` 计数。
   - `export async function kevCatalog(): Promise<Map<string, KevEntry> | null>` — 网络失败或结构异常返回 `null`（**"拿不到目录"必须与"目录里没有"区分**，这是本项目第 4 次踩同一类坑：有 bug 的探针把两者混为一谈）。
   - `export async function kevLookup(ids: string[]): Promise<{ confirmed: KevEntry[]; absent: string[]; unavailable: boolean }>`
   - `export function kevFromCatalog(entries: KevEntry[], ids: string[]): Doc[]`（纯函数，把目录条目转成 `Doc`，`id: \`kev:${cveID}\`、`category: "cve"`、`live: true`、正文沿用本地 KEV 前缀格式，让现有 `kevFacts()` 的 `KEV_MARK_RE` 能直接识别）
+  - `export function kevDocs(entries: KevEntry[]): Doc[]`（同一套映射，不按编号过滤；`kevFromCatalog` 改为"先按 ids 筛、再交给 `kevDocs`"，两段逻辑不得各写一遍）
+  - `export function kevScopeMatches(question: string, entries: Iterable<KevEntry>): KevEntry[]`（**纯函数，按范围查目录**：从问题里取 ASCII 产品词 + 一张很小的中文厂商别名表，对 `vendorProject/product/vulnerabilityName` 做不区分大小写的子串匹配，问题里出现年份时用 `dateAdded` 前缀收窄，按 `dateAdded` 倒序取前 12 条）
+    ——**为什么必须有这一条（2026-11-14 Task 2 实测加的）**：旗标题真实失败那一次是"语义检索空集 → `keyword()` 兜底 5 条不相干条目"，那次**问题里没有、也不可能有 CVE 编号**可供 `kevLookup(ids)` 查。只有 id 入口的目录层，在最需要它的那条路径上根本不会被触发。
   - `export const KEV_SNAPSHOT_VERSION = "2026.11.09"`（本地库快照版本，仅用于措辞"本地快照 vX 未收录"）
 
 - [ ] **Step 1: 先写会失败的纯函数用例**
@@ -360,6 +434,38 @@ test("kevFromCatalog：目录条目转成带 KEV 前缀的资料（本地快照�
   // 目录里没有的编号 → 空文档，不是异常
   assert.equal(kevFromCatalog([...entries.values()], ["CVE-2099-00001"]).length, 0);
 });
+
+// 纯函数回归：旗标题真实失败那一次是"语义检索空集 → keyword() 兜底不相干条目"（见 docs/competition-post.md 第 9 条），
+// 那次问题里没有 CVE 编号，kevLookup(ids) 无从查起。按范围查目录才是那条路径的入口，所以它必须是纯函数、可离线钉住。
+test("kevScopeMatches：问题里点厂商/产品（或中文别名）+ 年份时，不依赖编号也能从目录里捞出对应条目", () => {
+  if (!kevScopeMatches) return t_skip();
+  const e = (cveID, vendorProject, product, vulnerabilityName, dateAdded) =>
+    ({ cveID, vendorProject, product, vulnerabilityName, dateAdded, dueDate: "", requiredAction: "" });
+  const all = [
+    e("CVE-2026-21509", "Microsoft", "Office", "Microsoft Office Security Feature Bypass Vulnerability", "2026-01-26"),
+    e("CVE-2026-21514", "Microsoft", "Office", "Microsoft Office Remote Code Execution Vulnerability", "2026-02-10"),
+    e("CVE-2026-124194", "Microsoft", "Office", "Microsoft Office Outlook Missing User Interaction Vulnerability", "2026-11-10"),
+    e("CVE-2025-00001", "Microsoft", "Office", "Microsoft Office Old One", "2025-03-03"),
+    e("CVE-2026-77777", "Adobe", "Acrobat", "Adobe Acrobat Reader Out of Bounds Vulnerability", "2026-05-05"),
+  ];
+  // ① 英文产品词 + 中文厂商别名同时命中，年份把 2025 那条筛掉
+  const office2026 = kevScopeMatches("2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？", all);
+  assert.deepEqual(office2026.map((x) => x.cveID), ["CVE-2026-124194", "CVE-2026-21514", "CVE-2026-21509"],
+    "应只含 2026 年微软 Office 三条，且按 dateAdded 倒序（新的在前）");
+  assert.ok(!office2026.some((x) => x.cveID === "CVE-2025-00001"), "带年份的问题不得混入上一年的条目");
+  assert.ok(!office2026.some((x) => x.cveID === "CVE-2026-77777"), "别厂商不得混入");
+  // ② 不提年份 → 同一产品的新旧条目都算范围命中
+  assert.equal(kevScopeMatches("微软 Office 有哪些在野利用漏洞？", all).length, 4);
+  // ③ 问题没点任何厂商/产品 → 空数组，绝不"全量塞进上下文"
+  assert.deepEqual(kevScopeMatches("什么是零日漏洞？", all), []);
+  // ④ CISA/KEV/CVE 这类"来源词"不得当产品词用——否则任何 KEV 题都会匹配到含 CISA 字样的条目
+  assert.deepEqual(kevScopeMatches("KEV 目录里 CISA 收录了哪些 CVE 编号？", all), []);
+  // ⑤ 转成的 Doc 走同一个前缀格式（闸门可直接识别），且与 kevFromCatalog 共用映射
+  const docs = kevDocs(office2026);
+  assert.equal(docs.length, 3);
+  assert.match(docs[0].content, /^在野利用（CISA KEV）｜厂商：Microsoft｜产品：Office｜KEV 收录：2026-11-10/);
+  assert.equal(docs[0].live, true);
+});
 ```
 
 本文件已经有一个共享的动态导入块（现约 306–316 行：`let gapFacts = null; … try { const m = await import("../functions/lib/chat.ts"); … } catch { … }`，各用例用 `if (!kevFacts) return t_skip();` 守卫）。**不要新造 loader 函数**，按同一形状扩展它——在同一个 try 块里补一行 kb.ts 的导入，并把符号存到顶层 `let`：
@@ -367,10 +473,14 @@ test("kevFromCatalog：目录条目转成带 KEV 前缀的资料（本地快照�
 ```js
 let kevFromCatalog = null;
 let kevLookup = null;
+let kevScopeMatches = null;
+let kevDocs = null;
 try {
   const kb = await import("../functions/lib/kb.ts");
   kevFromCatalog = kb.kevFromCatalog;
   kevLookup = kb.kevLookup;
+  kevScopeMatches = kb.kevScopeMatches;
+  kevDocs = kb.kevDocs;
 } catch { /* Node 版本不支持 .ts 直读时跳过本用例 */ }
 ```
 
@@ -437,10 +547,9 @@ export async function kevCatalog(force = false): Promise<Map<string, KevEntry> |
 }
 
 /** 纯函数：目录条目 → 本地库同款正文前缀，使 kevFacts() 的 KEV_MARK_RE 直接可用。 */
-export function kevFromCatalog(entries: KevEntry[], ids: string[]): Doc[] {
-  const want = new Set(ids.map((x) => x.toUpperCase()));
+export function kevDocs(entries: KevEntry[]): Doc[] {
   return entries
-    .filter((e) => want.has(e.cveID.toUpperCase()) && e.dateAdded)
+    .filter((e) => e.cveID && e.dateAdded)
     .map((e) => ({
       id: `kev:${e.cveID}`,
       title: `${e.cveID}: ${clip(e.vulnerabilityName, 90)}`,
@@ -450,6 +559,47 @@ export function kevFromCatalog(entries: KevEntry[], ids: string[]): Doc[] {
       source_url: `https://www.cisa.gov/known-exploited-vulnerabilities-catalog?selected_cve=${e.cveID}`,
       category: "cve", similarity: 1, anchor: true, live: true,
     }));
+}
+
+/** 按编号取目录条目 → Doc（映射只写在 kevDocs 一处，这里只做筛选）。 */
+export function kevFromCatalog(entries: KevEntry[], ids: string[]): Doc[] {
+  const want = new Set(ids.map((x) => x.toUpperCase()));
+  return kevDocs(entries.filter((e) => want.has(e.cveID.toUpperCase())));
+}
+
+// "来源词"不是产品词：不排除的话，任何提 CISA/KEV 的问题都会把这些词当产品拿去子串匹配。
+const KEV_STOP_TOKENS = new Set(["cisa", "kev", "cve", "nvd", "cvss", "stix", "mitre", "api", "kb"]);
+// 中文厂商别名 → 目录里的英文写法。只放实测/高频会出现在中文问题里的厂商，不做通用翻译。
+const KEV_VENDOR_ALIAS: Record<string, string> = {
+  "微软": "microsoft", "苹果": "apple", "谷歌": "google", "安卓": "android",
+  "甲骨文": "oracle", "思科": "cisco", "飞塔": "fortinet", "帕洛阿尔托": "palo alto",
+};
+
+/**
+ * 纯函数：不依赖问题里出现 CVE 编号，也能从目录里捞出"这个厂商/产品"的在野利用条目。
+ * 存在的理由写在第 9 条缺陷里：旗标题真实失败那次是语义检索空集 → keyword() 兜底不相干条目，
+ * 那次没有编号可查，只有 id 入口的目录层在最需要它的路径上不会被触发。
+ * 匹配口径：问题里的 ASCII 词（去掉来源词）+ 中文厂商别名，对 vendorProject/product/vulnerabilityName
+ * 做不区分大小写的子串匹配；问题里出现 20xx 时按 dateAdded 前缀收窄；按 dateAdded 倒序取前 12 条。
+ * 一个词都没命中时返回空数组——绝不允许"没匹配到就把整个目录塞进上下文"。
+ */
+export function kevScopeMatches(question: string, entries: Iterable<KevEntry>): KevEntry[] {
+  const raw = String(question ?? "");
+  const ascii = (raw.match(/[A-Za-z][A-Za-z0-9.\-/]{2,24}/g) ?? [])
+    .map((s) => s.toLowerCase()).filter((s) => !KEV_STOP_TOKENS.has(s));
+  const alias = Object.entries(KEV_VENDOR_ALIAS)
+    .filter(([zh, en]) => en && raw.includes(zh)).map(([, en]) => en.toLowerCase());
+  const terms = [...new Set([...ascii, ...alias])];
+  if (!terms.length) return [];
+  const year = (raw.match(/20\d{2}/) ?? [])[0] ?? null;
+  return [...entries]
+    .filter((e) => {
+      const hay = `${e.vendorProject} ${e.product} ${e.vulnerabilityName}`.toLowerCase();
+      if (!terms.some((p) => hay.includes(p))) return false;
+      return !year || String(e.dateAdded ?? "").startsWith(year);
+    })
+    .sort((a, b) => String(b.dateAdded).localeCompare(String(a.dateAdded)))
+    .slice(0, 12);
 }
 
 /** 按编号现查：confirmed=目录里有（带日期），absent=目录里确实没有，unavailable=目录没拉到。 */
@@ -516,9 +666,10 @@ Expected: `SKIP_LLM=1 npm test` 至少 `# pass 12` 以上（新增 1 个纯函�
 
 ---
 
-### Task 4: 生成后对"在野利用"断言做硬校验（检索拿到了却没说 → 代码层兜底）
+### Task 4: 生成后对"在野利用"断言做硬校验（编号真、结论错 / 有证据却不说 → 代码层更正）
 
-**为什么不能只靠 prompt：** 本地 harness 10 次采样里检索每次都含 CVE-2026-21509、闸门也把它列进证据清单，但线上那一版仍是零编号（第 9 条缺陷）。措辞与闸门是"请求模型照做"，硬校验是"不照做就在代码层更正"。这两件事要分开提交，因为评审者可能接受现查目录、却不同意改动回答正文。
+**为什么不能只靠 prompt（2026-11-14 Task 2 实测后改写过一次）：** 立项时写的理由是"线上旗标题零编号、检索明明拿到了 21509"，这条**已被 Task 2 的留档证伪**（`docs/competition-post.md` 第 9 条：线上 9 次全绿；那条零编号回答的 5 条 `sources` 相似度全是 0.3 的关键词兜底条目、里面根本没有 21509，真实因果是"语义检索空集 → 兜底 → 判不充分 → 如实拒答"）。改写后剩下的理由是两条仍然成立的：① 回答正文把某个编号说成在野利用、而 KEV 目录里没有它（第 3 条缺陷那一类"编号真、结论错"），措辞与闸门都只是"请求模型照做"，硬校验是"不照做就在代码层更正"；② 当上下文里确实有 KEV 证据（语义检索命中或 Task 3 现查目录返回）而正文没提，代码层可以补一段核验事实。这两件事与 Task 3 分开提交，因为评审者可能接受现查目录、却不同意改动回答正文。
+**边界必须写清：** 硬校验挡不住"语义检索空集 → 兜底"那条路径——那次上下文里没有可校验的编号；救它的是 Task 3，且 Task 3 的触发条件**不得依赖本地检索结果**（已在 Task 3  Interfaces 里钉成约束）。
 
 **Files:**
 - Modify: `functions/lib/chat.ts`（新增 `kevAssertedIds`、`kevCorrection`，并在 `runChat` 生成之后调用）
@@ -535,9 +686,10 @@ Expected: `SKIP_LLM=1 npm test` 至少 `# pass 12` 以上（新增 1 个纯函�
 - [ ] **Step 1: 写失败用例（把判据钉成代码）**
 
 ```js
-// 纯函数回归：2026-11-14 线上实测——检索结果里有 CVE-2026-21509（srcHasId 3/3），
-// 回答正文却是"知识库与网络检索均未覆盖…"、零编号。闸门只负责"给证据"，
-// 这里补"生成后检查断言"：凡是句子里把某个编号说成在野利用，就必须能对上 KEV 事实。
+// 纯函数回归：两个仍成立的失效面（Task 2 实测后改过立项理由，见本任务开头）。
+// ① 正文把某编号说成在野利用，而 KEV 目录里没有它；② 上下文里有 KEV 证据（语义检索命中或
+// Task 3 现查目录返回）而正文没提。这里只钉这两条，不许写成"线上零编号那次"——那次的上下文
+// 里根本没有 21509，硬校验对它无能为力，那条路径由 Task 3 负责。
 test("kevAssertedIds + kevCorrection：断言与 KEV 事实对不上时给出代码层更正", () => {
   if (!kevAssertedIds || !kevCorrection) return t_skip();
   const Q = "2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？";
@@ -709,7 +861,75 @@ export function kevCorrection(
 
 并在文件顶部 import 里加入 `kevLookup`、`KevEntry`、`KEV_SNAPSHOT_VERSION`（与现有 `nvdLive` 同行从 `./kb.ts` 导入）。
 
-- [ ] **Step 4: 在 runChat 里接线**
+- [ ] **Step 4: 生成前把目录事实注入证据清单（第 9 条缺陷的真修复在这里，不在下一步的硬校验里）**
+
+**为什么这一步必须存在：** 后面那步硬校验有两个入口——正文里出现了无 KEV 标注的编号，或本地资料里本来就有 KEV 标注。
+线上那次真实失败（`docs/eval-archive/online-kev-empty-retrieval-2026-11-14.json`）走的是
+`vector()` 空集 → `chat.ts:137` 的 `keyword()` 兜底（分值硬编码 0.3、无 anchor）→ `isLocalSufficient()` 判不充分 →
+模型答"知识库与网络检索均未覆盖……"，**正文一个编号都没有**，硬校验的 `missing` 集合是空的，它无话可说。
+所以要在生成之前把目录里查到的事实放进证据清单，让 `chat.ts:67` 的 `isLocalSufficient()` 看到 `anchor`、
+让 `chat.ts:254` 的 `kevFacts()` 看到"在野利用（CISA KEV）"标注——小模型要的是可照抄的事实，不是更讲道理的禁令。
+
+`functions/lib/chat.ts` 的 `collectLocal()`（112 行起）里，紧接现 NVD 那段之后、
+`return dropOffTacticDocs(question, docs);`（现 143 行）之前插入：
+
+```ts
+  // 第 2 层之 KEV 目录：触发条件**只有**"问题在问在野利用"。不得附加 docs.length === 0、
+  // "本地有没有命中"之类的条件——本地兜底给出 5 条不相干条目时恰恰最需要目录，
+  // 把条件挂回本地检索结果就是把第 9 条缺陷重新实现一遍。
+  // KEV_HINT / KEV_MARK_RE / CVE_ID_RE 是本文件 250–252 行的模块级 const：collectLocal 只被 runChat 调用，
+  // 那时模块早已求值完，不存在 TDZ 问题。不要为了"看着顺眼"把它们上移——那会让本任务的 diff 混进无关搬动。
+  if (KEV_HINT.test(question)) {
+    const cat = await kevCatalog();                     // null = 目录没拉到；≠"目录里没有"（缺陷 4 的老坑）
+    if (cat) {
+      // 只补本地证据里"没有 KEV 标注"的那些编号：已有标注的一律不动，
+      // 本地条目携带的 CVSS / 受影响版本也一条不删——这一支只在 KEV 问题上生效，删本地证据会让
+      // "CVE-x 的 CVSS 和受影响版本"这类题回归（现评测集里就有）。
+      const annotated = new Set(docs
+        .filter((d) => KEV_MARK_RE.test(String(d.content)))
+        .map((d) => (String(d.title) + String(d.content)).match(CVE_ID_RE)?.[0]?.toUpperCase())
+        .filter((x): x is string => Boolean(x)));
+      const fresh = kevDocs(kevScopeMatches(question, cat.values()).filter((e) => !annotated.has(e.cveID)));
+      if (fresh.length) docs = dedupe([...fresh.slice(0, 5), ...docs]).slice(0, 8);
+    }
+  }
+```
+
+import 行（`chat.ts:6`）加上 `kevCatalog`、`kevDocs`、`kevScopeMatches`。上限 `5` / `8` 的取法：
+`kevScopeMatches` 已按 `dateAdded` 倒序截到 12，旗标题（微软 Office + 2026）实际命中 3 条，取前 5 足够；
+总数 8 是给本地精确锚点条目留位置，同时把 `localBlock` 控制在 8 × 900 字符内。
+
+**这一步的验收判据必须用 `mode=off`，不能用默认 auto：** auto/on 下网络检索照样发生，
+而我们已经在留档里看到网络来源出现过《微软2026年11月补丁星期二解析…Outlook 零日 CVE-2026-124194》——
+那时答对 124194 不能证明注入生效，也可能只是模型照抄了搜索结果。`mode=off` 不联网、本地快照停在 2026.11.09
+（`data/phase2_raw.json` 里没有 124194），所以只有目录注入能让它出现：
+
+```bash
+curl -s -X POST "${SITE:-http://127.0.0.1:8000}/functions/v1/app?action=chat" \
+  -H 'Content-Type: application/json' \
+  -H "Origin: ${SITE:-http://127.0.0.1:8000}" \
+  -d '{"question":"2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？","category":null,"mode":"off"}' \
+  | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>{const j=JSON.parse(s);
+    const a=j.answer??"";const t=(re)=>re.test(a);const src=j.sources??[];
+    console.log(JSON.stringify({coverage:j.coverage,mode:j.mode,searchUsed:j.search_used,
+      y21509:t(/CVE-2026-21509/),d21509:t(/2026[-/年]0?1[-/月]26/),
+      y124194:t(/CVE-2026-124194/),d124194:t(/2026[-/年]1?1[-/月]10/),
+      nSrc:src.length,nWeb:(j.web_sources??[]).length,
+      liveSrcTitles:src.filter((x)=>x.live).map((x)=>String(x.title)),
+      srcHas124194:src.some((x)=>/CVE-2026-124194/i.test(String(x.title)))}));});'
+```
+
+**为什么不能写成"来源里有没有 KEV 标注"**：响应体里的 `sources` 是 `chat.ts:11-18` 的 `SourceRef`
+（`title/url/category/similarity/live`），**没有 `content`**，`KEV_MARK_RE` 在客户端侧永远看不到，
+写成判据就是恒 false 的空壳。可观察的等价证据是 `live:true` 的来源条目（`kevDocs` 的 `Doc` 会经 `toSource`
+带出 `live`）和它的标题，所以上面查的是 `liveSrcTitles` / `srcHas124194`。
+注入的"标注被 `kevFacts()` 看到"这件事发生在 `chat.ts:284` 之前、只在请求内部，要证它得靠 Step 5 的硬校验
+`kevReason` 或下面的正则用例，不能靠响应体。
+
+Expected：`y21509/d21509/y124194/d124194` 全 true、`mode:"off"`、`searchUsed:false`、`nWeb:0`、
+`liveSrcTitles` 里出现 `CVE-2026-124194`。`y124194` 为 false 就是注入没生效（此时别去看硬校验——off 分支它同样没有编号可补）。
+
+- [ ] **Step 5: 在 runChat 里接线（生成后硬校验，兜住"编号真、结论错"与"有证据却不说"）**
 
 `functions/lib/chat.ts` 生成之后（现 `const searchUsed = gen.searchUsed;` 之前）插入：
 
@@ -741,7 +961,7 @@ export function kevCorrection(
 
 `return { status: 200, body: { answer: payloadAnswer, ..., note: note + kevNote } }`。
 
-- [ ] **Step 5: 本机 harness 实测同一道旗标题**
+- [ ] **Step 6: 本机 harness 实测同一道旗标题**
 
 ```bash
 cd /f/Qoder/seccopilot
@@ -752,9 +972,12 @@ sleep 8 && curl -s -o /dev/null -w "harness=%{http_code}\n" http://127.0.0.1:800
 SITE=http://127.0.0.1:8000 N=4 node scripts/probe-online-kev.mjs; echo "exit=$?"
 ```
 
-Expected: `harness=200`；探针 4 次里 `hasId && hasDate && hasType` 全真（`corrected` 兜底生效），退出码 0。若仍 <4，把 4 次结果写进 `docs/competition-post.md` 而不是调判据放行——**这是硬校验，允许它红**。
+Expected: `harness=200`；探针 4 次里 `hasId && hasDate && hasType` 全真，退出码 0。
+这一支现在由**两条**机制共同保证：Step 4 的注入让正文一开始就有可照抄的编号，Step 5 的硬校验在漏说时补上。
+若仍 <4，先单独跑 Step 4 末尾那条 `mode=off` 的 curl 定位是哪一支没生效（`y124194` 只可能来自注入），
+再把 4 次结果写进 `docs/competition-post.md` 而不是调判据放行——**这是硬校验，允许它红**。
 
-- [ ] **Step 6: 全量回归 + 提交**
+- [ ] **Step 7: 全量回归 + 提交**
 
 ```bash
 SKIP_LLM=1 npm test 2>&1 | tail -6 && SITE=http://127.0.0.1:8000 npm test 2>&1 | tail -8
