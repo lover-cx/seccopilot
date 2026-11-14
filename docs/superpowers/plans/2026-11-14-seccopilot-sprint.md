@@ -120,7 +120,8 @@ coverage/
 
 > 说明 ①：忽略一个目录要用 `dev/*` / `data/*` 而不是 `dev/` / `data/`——写 `dev/` 会让 git 不再进入该目录，后面的 `!dev/*.mjs` 就永远不生效（本计划第一次草稿犯过这个错，Task 1 Step 2 的验证要检查 `git ls-files dev/function-node.ts` 有输出）。
 > 说明 ②（2026-11-14 Task 1 评审后改）：草稿这里是 `dev/*` + 只放行 `dev/README.md`，评审指出后果是**公开克隆里所有"30 秒复现"命令都跑不通**（README.md:152-155 与 docs/competition-post.md:215-223 逐条引用 `dev/*.mjs`，package.json:17-18 的两个 harness 脚本直接指向 `dev/function-node.ts`），与"任何要发布的数字必须能追到留档 + 可重跑脚本"这条硬约束冲突。现在放行 `dev/*.mjs` 与 `dev/*.ts`（实测 13 个 .mjs 共 21,993 字节，凭据形状扫描零命中：它们都从 `data/.env` 读密钥，脚本体内无密钥），留档仍不入库。
-> 说明 ③：留档改落 `docs/eval-archive/`（已入库），不再落 `dev/`。理由是同一句话——"第 9 条缺陷""线上 0/3 合规"这类要发布的结论必须让评委不重打线上接口也能核；Task 2 与 Task 7 已按此改。
+> 说明 ③：留档改落 `docs/eval-archive/`（已入库），不再落 `dev/`。理由是同一句话——"第 9 条缺陷""legacy 6 行 6/6 而 `MODE=on` 3 行 2/3"这类要发布的结论必须让评委不重打线上接口也能核；Task 2 与 Task 7 已按此改。
+> 更正（2026-11-14 Task 2 重评审）：这里原先举的例子是「线上 0/3 合规」，那句话本身是**已被证伪的旧结论**（11-14 实测：legacy 6 行 6/6、`MODE=on` 3 行 2/3），拿它当"要发布的结论"的示例会让读者以为它仍成立——按同一条硬约束，改例子的同时把旧说法留在这里标明已撤回。
 
 - [ ] **Step 2: 初始化并做首个提交**
 
@@ -260,7 +261,8 @@ git add docs/competition-post.md && git commit -m "docs: 记录公开仓库前�
 // 线上 KEV 旗标题探针：同一问题连跑 N 次，逐次留档并判定"给出编号 + 给出收录日期 + 类型对得上、未降级"。
 // 用法：N=6 node scripts/probe-online-kev.mjs                                  # 默认线上站点、默认 MODE=on
 //       SITE=http://127.0.0.1:8000 MODE=off N=4 node scripts/probe-online-kev.mjs   # 本机自证；off 可排除网络因素
-// 判据与 scripts/eval.mjs 的 KEV 题一致：CVE-2026-21509 + 2026-01-26 + Security Feature Bypass / 安全功能绕过。
+// 判据的编号+类型来自 scripts/eval.mjs 的 KEV 题（:92 只有 pattern 与 title，**没有日期判据**），
+// 日期口径来自 dev/probe-kev-on-batch.mjs:38 与 dev/check-kev-samples.mjs:12，降级词表只有探针有——探针比 eval.mjs 严。
 // MODE 默认 "on"：与 docs/eval-archive/online-kev-empty-retrieval-2026-11-14.json 那条失败留档同模式，
 // 这样"同一模式、曾经红、现在绿"才是可比的；auto 模式请显式 MODE=auto 并另存一份。
 // 留档按天累加：同一天第二次运行追加为新 run（runId 含时间、MODE、站点），绝不覆盖既有 run 的行。
@@ -285,7 +287,7 @@ const DATE = /2026[-/年]0?1[-/月]26/;                  // 2026-01-26 / 2026/01
 const TYPE = /Security Feature Bypass|安全功能绕过/i;
 // 降级说法要盖住"只说 NVD 收录、不说在野利用"这一类（线上 6 次里真出现过）。
 const DOWNGRADE = /资料未说明|未说明其在野利用|未在野利用|未明确标注|未明确指出|未指明|无公开|尚无|无法确认|未经\s*KEV|是否被利用(?:无法|不明)|知识库与网络检索均未覆盖|未覆盖/;
-// 判据只到 21509（与 scripts/eval.mjs 一致）。这两条是观察项，不进退出码：
+// 判据只到 21509（编号与类型同 eval.mjs 那道题；日期与降级词表是探针更严，eval.mjs 没有）。这两条是观察项，不进退出码：
 // 按 dateAdded 落在 2026 年、产品为 Office 的目录条目实际有 5 条（21509、21514、124194，外加两条 2026 年才收录的
 // 2009 编号 0238/0556），按 CVE 编号年份算才是 3 条。回答漏了 21514 或 124194 仍会判绿，所以必须逐行记下来。
 const WATCH = { "CVE-2026-21514": /CVE-2026-21514/i, "CVE-2026-124194": /CVE-2026-124194/i };
@@ -372,7 +374,7 @@ runs.push({ runId: RUN_ID, mode: MODE, site: SITE, startedAt: new Date().toISOSt
             ok, okWithLocal, total: rows.length, bad, srcHasId: retrievalOk,
             watch: Object.fromEntries(Object.keys(WATCH).map((k) =>
               [k, rows.filter((r) => r.watch?.[k]).length])), rows });
-writeFileSync(OUT, JSON.stringify({ site: SITE, q: Q, runs }, null, 1), "utf-8");
+writeFileSync(OUT, JSON.stringify({ site: SITE, q: Q, runs }, null, 1) + "\n", "utf-8");  // 结尾补换行：探针写的与手写的入库件都要有，diff 才不会带 No newline at end of file
 console.log(`\n${SITE} mode=${MODE}：${ok}/${rows.length} 次给出「编号 + 收录日期 + 类型」且未降级，`
   + `其中 ${okWithLocal}/${rows.length} 次的来源标题里本来就有 CVE-2026-21509（"本地有据可引"才是知识库覆盖，`
   + `ok 与 okWithLocal 的差 = 全靠网络兜住的次数）；`
@@ -433,7 +435,12 @@ Expected（改造前）：`shape=rows runs=0 rows=6`；Expected（新脚本跑�
 
 **同一条改动里必须收窄第 8 条**（`docs/competition-post.md:237-240`）：第 8 条现在写的是"即便本地已有该编号的 KEV 标注，
 回答仍会说'本地库未覆盖'，且同一问题重跑 3 次可 3 次全红"。它的证据只有那条 `mode:"on"` / `!sufficient` 分支的单样本；
-`mode:"off"` 走的是另一条分支（`chat.ts:364` 固定话术"本地知识库未覆盖本题，需开启联网检索才能确认"，压根没有 `nSrc`）。
+`mode:"off"` 走的是另一条分支，但**不要写成"off 分支没有本地来源"**——那是本轮评审抓到的新错：
+`functions/lib/chat.ts:362` 的 `sources: docs.map(toSource)` 在三种 mode 下**无条件返回**，`mode:"off"` 同样带 `nSrc`；
+已入库的 11-12 两份留档（`docs/eval-archive/deployed-prompt-only-2026-11-12.json`、`local-guards-run1-2026-11-12.json`）里
+21 道 `off` 题有 20 道 `nSrc > 0`。真正的分支差别是**措辞来源**：`off` 且 `!sufficient` 时 `note` 是 `chat.ts:356`
+的"…且当前模式不联网；下列来源仅为近似条目，请勿当作权威结论"，而"本地知识库未覆盖本题，需开启联网检索才能确认"
+这句是**提示词要求模型这样说**（`chat.ts:303`），不是代码写死的 `note`。
 必须按 mode / 分支把两种话术分开写，否则"重跑 3 次全红"会被读成由探针证明——探针给的是 6/6 绿。
 
 - [ ] **Step 4: README 登记脚本并重跑一次作为文档证据**
@@ -1161,7 +1168,7 @@ npm run check:function && npm run build > /dev/null && echo build=ok
 git add functions/lib/chat.ts scripts/regression.test.mjs docs/competition-post.md README.md
 git commit -m "feat(chat): 生成后按 KEV 目录硬校验在野利用断言
 
-检索把 CVE-2026-21509 放进证据清单、回答却不照著说（线上 0/3 合规），说明提示词与
+旧归因「检索把 CVE-2026-21509 放进证据清单、回答却不照著说（线上 0/3 合规）」已被留档证伪（实测 legacy 6 行 6/6、MODE=on 3 行 2/3）；真问题是判据盲区——2 行未答全目录内 2026 Office 条目、1 行全靠网络兜住仍记绿，说明提示词与
 闸门都不足以兜住这个断言。kevAssertedIds 与回归用例共用同一判据，kevCorrection 分三种
 情形：已确认但正文漏了→补事实；断言但目录确实没有→降级且不删编号；目录不可达→只声明
 未核验，绝不把'没查到'写成'不存在'。"
