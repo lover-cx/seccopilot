@@ -30,6 +30,8 @@ for (let i = 0; i < N; i++) {
       i: i + 1, http: r.status, coverage: d.coverage, searchUsed: d.search_used, note: d.note,
       nSrc: (d.sources ?? []).length, nWeb: (d.web_sources ?? []).length,
       srcHasId: (d.sources ?? []).some((s) => ID.test(String(s.title ?? "") + String(s.content ?? ""))),
+      srcTitles: (d.sources ?? []).slice(0, 8).map((s) => String(s.title ?? "").slice(0, 120)),
+      srcSims: (d.sources ?? []).slice(0, 8).map((s) => s.similarity),
       hasId: ID.test(a), hasDate: DATE.test(a), hasType: TYPE.test(a),
       degraded: DOWNGRADE.test(a), webTitles: (d.web_sources ?? []).map((w) => w.title).slice(0, 5),
       answer: a.slice(0, 1500),
@@ -38,7 +40,8 @@ for (let i = 0; i < N; i++) {
     row = { i: i + 1, error: String(e?.message ?? e).slice(0, 200) };
   }
   rows.push(row);
-  console.log(JSON.stringify({ ...row, answer: undefined, webTitles: undefined }).slice(0, 260));
+  // stdout 只给一行短判定（srcTitles/srcSims 与 answer、webTitles 一样只进留档，不进 stdout）
+  console.log(JSON.stringify({ ...row, answer: undefined, webTitles: undefined, srcTitles: undefined, srcSims: undefined }).slice(0, 260));
   writeFileSync(OUT, JSON.stringify({ site: SITE, q: Q, rows }, null, 1), "utf-8");
 }
 const ok = rows.filter((r) => r.hasId && r.hasDate && r.hasType && !r.degraded).length;
