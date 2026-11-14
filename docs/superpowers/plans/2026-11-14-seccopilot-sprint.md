@@ -1190,6 +1190,24 @@ Expected: `SKIP_LLM=1` 全绿；本机全量 `# fail 0`（若网络来源类用�
 - Modify: `src/components/StatsPanel.tsx:3-26`（渲染 `null` 与缺口说明）
 - Modify: `scripts/regression.test.mjs`（"stats 返回完整计数" 改判据 + 新增纯函数用例）
 
+**2026-11-14 预检（对着真代码数的，实现与评审都按这一条，不要再重新发现）：** 静默归零一共有**四处**，前两处在后端、
+后两处在**前端**，只改后端等于没改——
+① `routes.ts:25` `catch { return 0; }`（任何超时/抛错 → 该类 0 条）；
+② `routes.ts:23-24` `const m = (r.headers.get("content-range") ?? "").match(/\/(\d+)$/); return m ? Number(m[1]) : 0;`
+——**HTTP 200 但没有 `content-range` 头**也算 0，与"这一类真的没有条目"不可区分；
+③ `routes.ts:16` `if (!b.url) return { status: 200, data: { total: 0, categories: 全 0 } }`——
+Secret 没配好时整页报"0 条"而不是报错，这条在新契约下**必须走 502**（无后端 = 全部未知），
+不得留在"静默归零"那一支里；
+④ `src/components/StatsPanel.tsx:59` `{stats?.total || 0}` 与 `:62`/`:77` `Object.entries(stats?.categories || {})`——
+**前端自己又把 `null`/`undefined` 变成 0**，后端就算回 `null`，屏幕上还是"0 条"。
+所以 Step 的前端改动不是"顺手加个说明"，而是把 `|| 0` 换成显式分支（`null` → "未知"），
+并把 `:78` 的 `const percentage = stats?.total ? (count / stats.total) * 100 : 0` 在 `total` 为 `null` 时短路
+（否则百分比那一行会出 `NaN%`）。
+`Stats` 接口 `:3-5` 的 `total: number` / `categories: Record<string, number>` 要跟着放宽为 `number | null` 并加 `degraded?: string[]`。
+**同一形状的坑还在另外两个端点上**：`routes.ts:37` 与 `:51` 在 `!b.url` 时返回 `200 {results: []}`，
+那是"检索到 0 条"与"后端没配"的同一个歧义——本任务不做（`#25` 只管 stats），
+但要在缺陷清单里记一句"同类歧义仍在 cve/attack 两个端点，未修"，别让读者以为已全面收紧。
+
 **Interfaces:**
 - Consumes: `Backend`（`{url, h}`）。
 - Produces: `export function aggregateStats(total: number | null, per: (number | null)[], failed: string[]): { data: { total: number | null; categories: Record<string, number | null>; degraded: string[] }; status: number }`；响应形状 `{total, categories, degraded}`（新增 `degraded`，其余字段语义收紧为"可能为 `null`"）。
@@ -1368,7 +1386,10 @@ git commit -m "fix(stats): 上游失败返回 null/502 而非 0，前端把缺�
 **Files:**
 - Modify: `functions/lib/chat.ts`（`coverage`/`note` 计算）
 - Modify: `scripts/regression.test.mjs:~184`（`chat：响应含联网搜索契约字段`）
-- Modify: `src/components/*`（若前端按 `coverage === "web"` 显示"来源：网络检索"标签，需同步；先在 Step 1 确认是否存在该分支）
+- ~~Modify: `src/components/*`~~ → **2026-11-14 预检实测：前端根本不读 `coverage`**
+  （`grep -rn "coverage" src/` **0 命中**；`src/components/ChatPanel.tsx` 只在 `:96` 取 `data.web_sources`、
+  `:261` 无条件渲染 `msg.note`）。所以本任务**没有前端改动面**，Step 5 只动后端与用例；
+  访客看到的"结合了网络检索"完全来自 `note` 这一句，收紧 `note` 就是收紧界面。
 
 **Interfaces:**
 - Consumes: `gen.web`、`gen.searchUsed`、`docs.length`。
