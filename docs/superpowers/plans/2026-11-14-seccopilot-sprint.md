@@ -312,9 +312,20 @@ for (let i = 0; i < N; i++) {
   console.log(JSON.stringify({ ...row, answer: undefined, webTitles: undefined, srcTitles: undefined }).slice(0, 300));
 }
 // 追加而不是覆盖：把本次 run 的行并入当天文件，历史 run 原样保留。
+// 旧形状 {site,q,rows} 必须先原地迁移成一个 legacy run——当天的 6 行线上证据已经提交在库里，
+// 直接按 prev.runs ?? [] 读会把它们静默丢掉，那等于用新脚本删掉了第 9 条唯一引用的证据文件内容。
 const prev = existsSync(OUT) ? JSON.parse(readFileSync(OUT, "utf-8")) : { site: SITE, q: Q, runs: [] };
-const runs = (prev.runs ?? []).filter((x) => x.runId !== RUN_ID);
-const ok = rows.filter((r) => r.hasId && r.hasDate && r.hasType && !r.degraded).length;
+const pass = (rs) => rs.filter((r) => r.hasId && r.hasDate && r.hasType && !r.degraded).length;
+const legacy = Array.isArray(prev.rows) && prev.rows.length
+  ? [{ runId: `legacy-${DAY}`, mode: prev.mode ?? "unrecorded", site: prev.site ?? SITE,
+       ok: pass(prev.rows), total: prev.rows.length,
+       srcHasId: prev.rows.filter((r) => r.srcHasId).length,
+       watch: Object.fromEntries(Object.keys(WATCH).map((k) =>
+         [k, prev.rows.filter((r) => WATCH[k].test(String(r.answer ?? ""))).length])),
+       migratedFrom: "rows", rows: prev.rows }]
+  : [];
+const runs = [...(prev.runs ?? []), ...legacy].filter((x) => x.runId !== RUN_ID);
+const ok = pass(rows);
 const retrievalOk = rows.filter((r) => r.srcHasId).length;
 runs.push({ runId: RUN_ID, mode: MODE, site: SITE, startedAt: new Date().toISOString(),
             ok, total: rows.length, srcHasId: retrievalOk,
@@ -339,6 +350,19 @@ Expected（本条已被 2026-11-14 的实测改掉，保留原文再更正，不
 而那条零编号回答出自 `mode:"on"` 的一次抓取（`dev/online-kev-2026-11-14.json`：5 条来源全是 `keyword()` 的 0.3 兜底分、
 无一条含 21509、走的是 `!sufficient` 分支）。所以这道题的真实性质是**线上非确定性**，不是"每次都答不出来"；
 第 9 条必须按实测写，且不得沿用"检索拿到了、回答没用上"那句归因——它对自己引用的那份留档都不成立。
+
+**形状迁移必须先验一次**：库里 `docs/eval-archive/online-kev-2026-11-14.json` 现在是旧形状 `{site,q,rows}`，
+那 6 行正是第 9 条唯一引用的证据；新脚本按 `runs` 写，如果只读 `prev.runs ?? []`，第一次运行就会把它们静默丢掉。
+改完脚本后，运行前后各数一次：
+
+```bash
+node -e 'const j=require("./docs/eval-archive/online-kev-2026-11-14.json");
+const n = j.runs ? j.runs.reduce((s, r) => s + r.rows.length, 0) : (j.rows ?? []).length;
+console.log("shape=" + (j.runs ? "runs" : "rows"), "runs=" + (j.runs?.length ?? 0), "rows=" + n);'
+```
+
+Expected（改造前）：`shape=rows runs=0 rows=6`；Expected（新脚本跑过一次 N=3 之后）：`shape=runs runs=2 rows=9`
+（`legacy-2026-11-14` 的 6 行 + 本次 3 行）。**若 rows < 9，就是新脚本丢了旧证据，立即停止不要提交。**
 
 - [ ] **Step 3: 把测量结果写成第 9 条缺陷**
 
