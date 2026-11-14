@@ -1,6 +1,51 @@
 {
- "note": "留档说明：2026-11-14 20:33 本机一次线上 chat 响应的原始转存（源文件 dev/online-kev-2026-11-14.json；dev/*.json 不入库，故原样搬进这个目录，response 里的字段一字未改，含原响应自带的 note）。这是一次**不可复现的单独观察**，保留它的唯一理由是充当反证：作品帖第 9 条原先写下的归因「检索拿到了、回答没用上」在这条记录上并不成立——response.sources 那 5 条的 similarity 全是 0.3（functions/lib/kb.ts 关键词兜底写死的分值），里面根本没有本题那个 CVE 编号（本文件全文不出现该编号，搜索即可自证），所以那次正文零编号时，上下文里本来就没有它可引用。",
- "response": {
+ "source": "dev/online-kev-2026-11-14.json（本机原始抓取，dev/*.json 被 .gitignore 挡着、不入库；本文件是它的入库副本）",
+ "capturedAt": "2026-11-14T20:33:07+08:00",
+ "requestCondition": "手工抓取：POST https://seccopilot-kpa8w0w9u7e.qoder.zone/functions/v1/app?action=chat，请求体 {question, category:null, mode:\"on\"}——mode 是显式 on，与 docs/eval-archive/online-kev-2026-11-14.json 里 legacy-2026-11-14 那 6 行不同（那 6 行由修复前的探针发出、请求体不带 mode，服务端 normalizeMode 归成 auto，chat.ts:50）；与本文件 raw.mode=\"on\" 同模式的只有 2026-11-14 晚上那 3 行新 run。",
+ "note": "第 9 条缺陷引用的反证样本。raw 是原始响应的逐字副本（不加不减），其余摘要字段一律由 raw 现推。它证伪了计划初稿的归因「检索拿到了、回答没用上」：raw.sources 那 5 条 similarity 全是 0.3（functions/lib/kb.ts 的 keyword() 兜底写死的分值）、标题里没有 CVE-2026-21509，所以 srcHasId 实测为 false（旧版摘要把它抄成 true，抄的是'预期判定'而不是实测，已在修复轮改掉）；也就是说那次正文零编号时，上下文里本来就没有这个编号可引用。这是一次单独观察、不可复现，保留它只作反证。",
+ "provenance": {
+  "sourceFileBytes": 1488,
+  "sourceFileSha256": "e8063434b03009cce9bd9e559ab3e99f0596b24455e1cb3f7afbcc080c9b37c2",
+  "rawIsByteIdenticalToSource": true,
+  "sourceFileMtime": "2026-11-14T12:33:07.412Z"
+ },
+ "derived": {
+  "howDerived": "以下每个字段都是用 scripts/probe-online-kev.mjs 里的同一批正则字面量（ID/DATE/TYPE/DOWNGRADE）现算于 raw，不是手抄；重算命令见 recomputeCommand。",
+  "http": 200,
+  "mode": "on",
+  "coverage": "mixed",
+  "searchUsed": true,
+  "note": "本地知识库未有效覆盖本题，回答主要依据网络检索",
+  "noteBranch": "chat.ts !sufficient 分支",
+  "nSrc": 5,
+  "nWeb": 2,
+  "srcHasId": false,
+  "srcTitles": [
+   "CVE-2009-3459: Adobe Acrobat and Reader Heap-Based Buffer Overflow Vulnerability",
+   "Multi-Factor Authentication",
+   "CVE-2025-48633: Android Framework Information Disclosure Vulnerability",
+   "CVE-2025-43520: Apple Multiple Products Classic Buffer Overflow Vulnerability",
+   "CVE-2025-48572: Android Framework Privilege Escalation Vulnerability"
+  ],
+  "srcSims": [
+   0.3,
+   0.3,
+   0.3,
+   0.3,
+   0.3
+  ],
+  "hasId": false,
+  "hasDate": false,
+  "hasType": false,
+  "degraded": true,
+  "compliantWithProbeCriteria": false,
+  "watch": {
+   "CVE-2026-21514": false,
+   "CVE-2026-124194": false
+  },
+  "recomputeCommand": "node -e \"const p=require('./docs/eval-archive/online-kev-empty-retrieval-2026-11-14.json');const r=p.raw;console.log(r.sources.filter(s=>/CVE-2026-21509/i.test(s.title)).length)\""
+ },
+ "raw": {
   "answer": "知识库与网络检索均未覆盖2026年CISA关于Office产品漏洞的新增信息。",
   "sources": [
    {

@@ -1,0 +1,126 @@
+{
+ "purpose": "给第 9 条缺陷里「目录里 2026 年微软 Office 有 3 条」这句话提供可核来源，并把口径写死：同一个目录按两种'2026'过滤会得到 5 条与 3 条。",
+ "source": "dev/kev-feed-cache.json（2026-11-14 从 https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json 拉的真实目录；dev/*.json 被 .gitignore 挡着、不入库，本文件是从它抽出的最小可核片段）",
+ "catalogVersion": "2026.11.13",
+ "dateReleased": "2026-11-13T20:24:18.3008Z",
+ "count": 1781,
+ "filter": {
+  "productScope": "vendorProject 等于 Microsoft（忽略大小写/首尾空白）且 product 含 Office（不区分大小写）",
+  "yearA_dateAdded": "dateAdded 以 2026 开头 —— 命中 5 条：问题问的是'2026 年被 CISA 确认在野利用'，按字面就是 dateAdded 落在 2026，其中两条编号本身是 2009 年的老 CVE，今年才被列入目录",
+  "yearB_cveIdYear": "在上一条件之上再要求编号年份也是 2026（/^CVE-2026-/）—— 命中 3 条：这就是第 9 条正文说的'3 条'"
+ },
+ "rowsDateAdded2026": [
+  {
+   "cveID": "CVE-2009-0556",
+   "vendorProject": "Microsoft",
+   "product": "Office",
+   "vulnerabilityName": "Microsoft Office PowerPoint Code Injection Vulnerability",
+   "dateAdded": "2026-01-07",
+   "dueDate": "2026-01-28",
+   "requiredAction": "Apply mitigations per vendor instructions, follow applicable BOD 22-01 guidance for cloud services, or discontinue use of the product if mitigations are unavailable.",
+   "knownRansomwareCampaignUse": "Unknown"
+  },
+  {
+   "cveID": "CVE-2026-21509",
+   "vendorProject": "Microsoft",
+   "product": "Office",
+   "vulnerabilityName": "Microsoft Office Security Feature Bypass Vulnerability",
+   "dateAdded": "2026-01-26",
+   "dueDate": "2026-02-16",
+   "requiredAction": "Apply mitigations per vendor instructions, follow applicable BOD 22-01 guidance for cloud services, or discontinue use of the product if mitigations are unavailable.",
+   "knownRansomwareCampaignUse": "Unknown"
+  },
+  {
+   "cveID": "CVE-2026-21514",
+   "vendorProject": "Microsoft",
+   "product": "Office",
+   "vulnerabilityName": "Microsoft Office Word Reliance on Untrusted Inputs in a Security Decision Vulnerability",
+   "dateAdded": "2026-02-10",
+   "dueDate": "2026-03-03",
+   "requiredAction": "Apply mitigations per vendor instructions, follow applicable BOD 22-01 guidance for cloud services, or discontinue use of the product if mitigations are unavailable.",
+   "knownRansomwareCampaignUse": "Unknown"
+  },
+  {
+   "cveID": "CVE-2009-0238",
+   "vendorProject": "Microsoft",
+   "product": "Office",
+   "vulnerabilityName": "Microsoft Office Remote Code Execution",
+   "dateAdded": "2026-04-14",
+   "dueDate": "2026-04-28",
+   "requiredAction": "Apply mitigations per vendor instructions, follow applicable BOD 22-01 guidance for cloud services, or discontinue use of the product if mitigations are unavailable.",
+   "knownRansomwareCampaignUse": "Unknown"
+  },
+  {
+   "cveID": "CVE-2026-124194",
+   "vendorProject": "Microsoft",
+   "product": "Office",
+   "vulnerabilityName": "Microsoft Office Outlook Missing User Interaction for Potentially Unsafe Action Vulnerability",
+   "dateAdded": "2026-11-10",
+   "dueDate": "2026-11-24",
+   "requiredAction": "Apply mitigations in accordance with vendor instructions, ensuring compliance with CISA’s BOD 26-04 Prioritizing Security Updates Based on Risk (see URL in Notes) guidance and CISA’s “Forensics Triage Requirements” (see URL in Notes). Follow applicable BOD 26-04 guidance for cloud services or discontinue use of the product if mitigations are unavailable. Stakeholders are responsible for evaluating each asset's internet exposure and ensuring adherence to BOD 26-04 patching guidelines.",
+   "knownRansomwareCampaignUse": "Unknown"
+  }
+ ],
+ "rowsCveIdYear2026": [
+  {
+   "cveID": "CVE-2026-21509",
+   "vendorProject": "Microsoft",
+   "product": "Office",
+   "vulnerabilityName": "Microsoft Office Security Feature Bypass Vulnerability",
+   "dateAdded": "2026-01-26",
+   "dueDate": "2026-02-16",
+   "requiredAction": "Apply mitigations per vendor instructions, follow applicable BOD 22-01 guidance for cloud services, or discontinue use of the product if mitigations are unavailable.",
+   "knownRansomwareCampaignUse": "Unknown"
+  },
+  {
+   "cveID": "CVE-2026-21514",
+   "vendorProject": "Microsoft",
+   "product": "Office",
+   "vulnerabilityName": "Microsoft Office Word Reliance on Untrusted Inputs in a Security Decision Vulnerability",
+   "dateAdded": "2026-02-10",
+   "dueDate": "2026-03-03",
+   "requiredAction": "Apply mitigations per vendor instructions, follow applicable BOD 22-01 guidance for cloud services, or discontinue use of the product if mitigations are unavailable.",
+   "knownRansomwareCampaignUse": "Unknown"
+  },
+  {
+   "cveID": "CVE-2026-124194",
+   "vendorProject": "Microsoft",
+   "product": "Office",
+   "vulnerabilityName": "Microsoft Office Outlook Missing User Interaction for Potentially Unsafe Action Vulnerability",
+   "dateAdded": "2026-11-10",
+   "dueDate": "2026-11-24",
+   "requiredAction": "Apply mitigations in accordance with vendor instructions, ensuring compliance with CISA’s BOD 26-04 Prioritizing Security Updates Based on Risk (see URL in Notes) guidance and CISA’s “Forensics Triage Requirements” (see URL in Notes). Follow applicable BOD 26-04 guidance for cloud services or discontinue use of the product if mitigations are unavailable. Stakeholders are responsible for evaluating each asset's internet exposure and ensuring adherence to BOD 26-04 patching guidelines.",
+   "knownRansomwareCampaignUse": "Unknown"
+  }
+ ],
+ "probeJudgesThese": false,
+ "noteForItem9": "scripts/probe-online-kev.mjs 的合格判据只盯 CVE-2026-21509；21514 与 124194 只是观察项（watch），不进退出码。留档里 0/9 次回答提到 21514，两条 2009 年的条目更是从未出现。",
+ "provenance": {
+  "sourceFileBytes": 1854379,
+  "sourceFileSha256": "4028ec035856331a717d3305e87e45be37d400fc500da34a5464f05fc2773764",
+  "derivedRows": "rowsCitedByProbeAnswers 与其余各行同样取自 sourceFile（sha256 见 provenance.sourceFileSha256），抽取方式：按 cveID 过滤后原样写入本文件，不手抄。"
+ },
+ "rowsCitedByProbeAnswers": {
+  "why": "第 9 条正文里 22:33 第 2 行那句「CVE-2016-7193、CVE-2016-7262 的 KEV 收录时间均在 2022 年」不是猜测：这两行是从同一份真目录（catalogVersion 2026.11.13）按编号原样抽取的，所以文档里「这句是真的」这个判断能入库核对，不必依赖被 gitignore 的 dev/kev-feed-cache.json。两条的 product 一条是 Office、一条是 Excel，逐条照抄、不做归并。",
+  "CVE-2016-7193": [
+   {
+    "cveID": "CVE-2016-7193",
+    "vendorProject": "Microsoft",
+    "product": "Office",
+    "dateAdded": "2022-03-03",
+    "dueDate": "2022-03-24",
+    "vulnerabilityName": "Microsoft Office Memory Corruption Vulnerability"
+   }
+  ],
+  "CVE-2016-7262": [
+   {
+    "cveID": "CVE-2016-7262",
+    "vendorProject": "Microsoft",
+    "product": "Excel",
+    "dateAdded": "2022-03-03",
+    "dueDate": "2022-03-24",
+    "vulnerabilityName": "Microsoft Office Security Feature Bypass Vulnerability"
+   }
+  ]
+ }
+}
