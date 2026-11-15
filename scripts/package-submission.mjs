@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 提交包打包：`npm run package:submit`
+ * 提交包打包：`npm run submit:package`（含内部计划文档则 `npm run submit:package:with-plans`）
  *
  * 为什么不用命令行直接写 `git archive ... -- . ':(exclude)docs/superpowers'`：那条是 bash 写法，
  * 单引号与续行反斜杠在 cmd.exe 里会被原样吞掉（2026-11-15 实测报 `No such file or directory`）。
@@ -44,6 +44,7 @@ console.log(`已打包 HEAD ${head}`);
 console.log(`路径：${OUT}`);
 console.log(`大小：${(statSync(OUT).size / 1024).toFixed(0)} KB`);
 console.log(`sha256：${sha}`);
-console.log("可复现性：同一 HEAD 重打两次拿到同一个 sha256（11-15 实测 bash 打的与 Node 打的都是 6a9c5f1e…），因为 `git archive` 用固定时间戳写 zip 条目。所以包哈希可以直接当提交物的身份凭证用。");
+console.log("哈希的语义：`git archive` 用 **commit 时间**当 zip 条目时间戳，所以这个 sha256 是 HEAD 的函数——同一 HEAD 重打必然同一个哈希（11-15 实测 bash 打的与 Node 打的、连打两次都相同），换 HEAD 就变。");
+console.log("推论：哈希能当\"交的是哪一版提交\"的身份凭证，但**不能当内容指纹**——11-15 实测 e5ffab1 与 9a0248e 的包内文件逐字节相同（差异只在被排除的 docs/superpowers），哈希却不同。所以回执要同时记 HEAD 号与哈希。");
 console.log("\n接着跑审计（同一套判据，审的是 HEAD 树）：");
 console.log(`  node scripts/audit-submission.mjs${NAME.includes("plans") ? " --include-plans" : ""}`);
