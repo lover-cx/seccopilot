@@ -1,0 +1,239 @@
+{
+ "site": "https://seccopilot-kpa8w0w9u7e.qoder.zone",
+ "q": "2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？",
+ "runs": [
+  {
+   "runId": "2026-11-15T14-21-57-138Z_off_seccopilot-kpa8w0w9u7e-qoder-zone",
+   "mode": "off",
+   "site": "https://seccopilot-kpa8w0w9u7e.qoder.zone",
+   "startedAt": "2026-11-15T06:22:19.074Z",
+   "ok": 6,
+   "okWithLocal": 6,
+   "total": 6,
+   "bad": 0,
+   "srcHasId": 6,
+   "watch": {
+    "CVE-2026-21514": 0,
+    "CVE-2026-124194": 0
+   },
+   "rows": [
+    {
+     "i": 1,
+     "run": "2026-11-15T14-21-57-138Z_off_seccopilot-kpa8w0w9u7e-qoder-zone",
+     "http": 200,
+     "mode": "off",
+     "coverage": "local",
+     "searchUsed": false,
+     "note": "回答基于本地知识库",
+     "nSrc": 5,
+     "nWeb": 0,
+     "srcHasId": true,
+     "srcTitles": [
+      "CVE-2016-7193: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2026-21509: Microsoft Office Security Feature Bypass Vulnerability",
+      "CVE-2016-7262: Microsoft Office Security Feature Bypass Vulnerability",
+      "CVE-2015-1642: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2017-11882: Microsoft Office Memory Corruption Vulnerability"
+     ],
+     "srcSims": [
+      0.74,
+      0.74,
+      0.74,
+      0.74,
+      0.74
+     ],
+     "hasId": true,
+     "hasDate": true,
+     "hasType": true,
+     "degraded": false,
+     "watch": {
+      "CVE-2026-21514": false,
+      "CVE-2026-124194": false
+     },
+     "webTitles": [],
+     "answer": "2026 年被 CISA 确认在野利用的微软 Office 漏洞如下：\n\n- **CVE-2026-21509**：Microsoft Office 安全功能绕过漏洞，于 2026-01-26 被收录至 CISA KEV 目录，修复期限为 2026-02-16。该漏洞允许本地攻击者绕过安全功能，部分受影响产品可能已终止支持，建议停用或迁移到受支持版本 [L2]。\n\n其余相关漏洞（如 CVE-2016-7193、CVE-2016-7262、CVE-2015-1642、CVE-2017-11882）均在 2022 年或更早被收录，不符合 2026 年的时间范围要求。"
+    },
+    {
+     "i": 2,
+     "run": "2026-11-15T14-21-57-138Z_off_seccopilot-kpa8w0w9u7e-qoder-zone",
+     "http": 200,
+     "mode": "off",
+     "coverage": "local",
+     "searchUsed": false,
+     "note": "回答基于本地知识库",
+     "nSrc": 5,
+     "nWeb": 0,
+     "srcHasId": true,
+     "srcTitles": [
+      "CVE-2016-7193: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2026-21509: Microsoft Office Security Feature Bypass Vulnerability",
+      "CVE-2016-7262: Microsoft Office Security Feature Bypass Vulnerability",
+      "CVE-2015-1642: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2017-11882: Microsoft Office Memory Corruption Vulnerability"
+     ],
+     "srcSims": [
+      0.74,
+      0.74,
+      0.74,
+      0.74,
+      0.74
+     ],
+     "hasId": true,
+     "hasDate": true,
+     "hasType": true,
+     "degraded": false,
+     "watch": {
+      "CVE-2026-21514": false,
+      "CVE-2026-124194": false
+     },
+     "webTitles": [],
+     "answer": "2026 年被 CISA 确认在野利用的微软 Office 漏洞如下：\n\n- **CVE-2026-21509**：Microsoft Office 安全功能绕过漏洞，于 2026-01-26 被收录至 CISA KEV 目录，修复期限为 2026-02-16。该漏洞允许本地攻击者绕过安全功能，部分受影响产品可能已终止支持，建议停用或迁移到受支持版本 [L2]。\n\n其余相关漏洞（如 CVE-2016-7193、CVE-2016-7262、CVE-2015-1642、CVE-2017-11882）均在 2022 年或更早被收录，不在 2026 年范围内 [L1][L3][L4][L5]。"
+    },
+    {
+     "i": 3,
+     "run": "2026-11-15T14-21-57-138Z_off_seccopilot-kpa8w0w9u7e-qoder-zone",
+     "http": 200,
+     "mode": "off",
+     "coverage": "local",
+     "searchUsed": false,
+     "note": "回答基于本地知识库",
+     "nSrc": 5,
+     "nWeb": 0,
+     "srcHasId": true,
+     "srcTitles": [
+      "CVE-2016-7193: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2026-21509: Microsoft Office Security Feature Bypass Vulnerability",
+      "CVE-2016-7262: Microsoft Office Security Feature Bypass Vulnerability",
+      "CVE-2015-1642: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2017-11882: Microsoft Office Memory Corruption Vulnerability"
+     ],
+     "srcSims": [
+      0.74,
+      0.74,
+      0.74,
+      0.74,
+      0.74
+     ],
+     "hasId": true,
+     "hasDate": true,
+     "hasType": true,
+     "degraded": false,
+     "watch": {
+      "CVE-2026-21514": false,
+      "CVE-2026-124194": false
+     },
+     "webTitles": [],
+     "answer": "2026 年被 CISA 确认在野利用的微软 Office 漏洞如下：\n\n- **CVE-2026-21509**：Microsoft Office 安全功能绕过漏洞，于 2026-01-26 被收录至 CISA KEV 目录，修复期限为 2026-02-16。该漏洞允许未经授权的攻击者本地绕过安全功能，部分受影响产品可能已终止支持（EoL/EoS），建议停止使用或迁移到受支持版本 [L2]。\n\n其余记录中，如 CVE-2016-7193、CVE-2016-7262、CVE-2015-1642、CVE-2017-11882 均于 2022 年或更早被收录，不符合 2026 年的时间范围。\n\n因此，仅 **CVE-2026-21509** 符合条件。"
+    },
+    {
+     "i": 4,
+     "run": "2026-11-15T14-21-57-138Z_off_seccopilot-kpa8w0w9u7e-qoder-zone",
+     "http": 200,
+     "mode": "off",
+     "coverage": "local",
+     "searchUsed": false,
+     "note": "回答基于本地知识库",
+     "nSrc": 5,
+     "nWeb": 0,
+     "srcHasId": true,
+     "srcTitles": [
+      "CVE-2016-7193: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2026-21509: Microsoft Office Security Feature Bypass Vulnerability",
+      "CVE-2016-7262: Microsoft Office Security Feature Bypass Vulnerability",
+      "CVE-2015-1642: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2017-11882: Microsoft Office Memory Corruption Vulnerability"
+     ],
+     "srcSims": [
+      0.74,
+      0.74,
+      0.74,
+      0.74,
+      0.74
+     ],
+     "hasId": true,
+     "hasDate": true,
+     "hasType": true,
+     "degraded": false,
+     "watch": {
+      "CVE-2026-21514": false,
+      "CVE-2026-124194": false
+     },
+     "webTitles": [],
+     "answer": "2026 年被 CISA 确认在野利用的微软 Office 漏洞如下：\n\n- CVE-2026-21509：Microsoft Office 安全功能绕过漏洞，于 2026-01-26 被收录至 CISA KEV 目录，修复期限为 2026-02-16 [L2]。该漏洞涉及对不受信任输入的依赖，可能导致本地安全功能绕过，部分受影响产品可能已终止支持（EoL/EoS），建议停止使用或迁移到受支持版本。\n\n其他相关漏洞如 CVE-2016-7193、CVE-2016-7262、CVE-2015-1642、CVE-2017-11882 均于 2022 年前被收录，不在 2026 年范围内 [L1][L3][L4][L5]。"
+    },
+    {
+     "i": 5,
+     "run": "2026-11-15T14-21-57-138Z_off_seccopilot-kpa8w0w9u7e-qoder-zone",
+     "http": 200,
+     "mode": "off",
+     "coverage": "local",
+     "searchUsed": false,
+     "note": "回答基于本地知识库",
+     "nSrc": 5,
+     "nWeb": 0,
+     "srcHasId": true,
+     "srcTitles": [
+      "CVE-2016-7193: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2026-21509: Microsoft Office Security Feature Bypass Vulnerability",
+      "CVE-2016-7262: Microsoft Office Security Feature Bypass Vulnerability",
+      "CVE-2015-1642: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2017-11882: Microsoft Office Memory Corruption Vulnerability"
+     ],
+     "srcSims": [
+      0.74,
+      0.74,
+      0.74,
+      0.74,
+      0.74
+     ],
+     "hasId": true,
+     "hasDate": true,
+     "hasType": true,
+     "degraded": false,
+     "watch": {
+      "CVE-2026-21514": false,
+      "CVE-2026-124194": false
+     },
+     "webTitles": [],
+     "answer": "2026 年被 CISA 确认在野利用的微软 Office 漏洞如下：\n\n- CVE-2026-21509：Microsoft Office 安全功能绕过漏洞，于 2026-01-26 被收录至 CISA KEV 目录，修复期限为 2026-02-16 [L2]。该漏洞涉及对不受信任输入的依赖，可能导致本地安全功能绕过，部分受影响产品可能已终止支持（EoL/EoS），建议停止使用或迁移到受支持版本 [L2]。\n\n其他相关漏洞如 CVE-2016-7193、CVE-2016-7262、CVE-2015-1642 及 CVE-2017-11882 均非 2026 年收录，故不计入 [L1][L3][L4][L5]。"
+    },
+    {
+     "i": 6,
+     "run": "2026-11-15T14-21-57-138Z_off_seccopilot-kpa8w0w9u7e-qoder-zone",
+     "http": 200,
+     "mode": "off",
+     "coverage": "local",
+     "searchUsed": false,
+     "note": "回答基于本地知识库",
+     "nSrc": 5,
+     "nWeb": 0,
+     "srcHasId": true,
+     "srcTitles": [
+      "CVE-2016-7193: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2026-21509: Microsoft Office Security Feature Bypass Vulnerability",
+      "CVE-2016-7262: Microsoft Office Security Feature Bypass Vulnerability",
+      "CVE-2015-1642: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2017-11882: Microsoft Office Memory Corruption Vulnerability"
+     ],
+     "srcSims": [
+      0.74,
+      0.74,
+      0.74,
+      0.74,
+      0.74
+     ],
+     "hasId": true,
+     "hasDate": true,
+     "hasType": true,
+     "degraded": false,
+     "watch": {
+      "CVE-2026-21514": false,
+      "CVE-2026-124194": false
+     },
+     "webTitles": [],
+     "answer": "2026 年被 CISA 确认在野利用的微软 Office 漏洞如下：\n\n- CVE-2026-21509：Microsoft Office 安全功能绕过漏洞，于 2026-01-26 被收录至 CISA KEV 目录，修复期限为 2026-02-16。该漏洞允许本地攻击者绕过安全功能，部分受影响产品可能已终止支持（EoL/EoS），建议停止使用或迁移到受支持版本 [L2]。\n\n其余记录中，如 CVE-2016-7193、CVE-2016-7262、CVE-2015-1642、CVE-2017-11882 均于 2022 年前被收录，不在 2026 年范围内。\n\n因此，2026 年仅确认一条在野利用漏洞：CVE-2026-21509 [L2]。"
+    }
+   ]
+  }
+ ]
+}
