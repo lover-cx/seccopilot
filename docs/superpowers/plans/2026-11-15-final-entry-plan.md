@@ -116,6 +116,79 @@
 
 ---
 
+## 九、提交操作手册（逐步，含目录与判据）
+
+### 0. 目录先说清楚，避免在错误的地方初始化仓库
+
+| 路径 | 是什么 | 在这里做什么 |
+| --- | --- | --- |
+| `F:\Qoder\seccopilot` | **项目仓库根**（`git rev-parse --show-toplevel` 实测输出），分支 `main`，24 个提交，无 remote | 所有代码/文档/测试/打包命令都在这里跑；`git init` **已经做过，不要再 init** |
+| `F:\Qoder\submit-2026-11-15` | 提交产物暂存区（在仓库外，不在 git 里） | 只放打好的 zip；上传天池就从这里选文件 |
+| `F:\Qoder` | 上面两个目录的父目录，**不是仓库** | 别在这里 `git init`，否则会在 `seccopilot` 外面套一层仓库 |
+
+**不要在 `F:\Qoder` 下再 `git init`。** 现有仓库根是 `F:\Qoder\seccopilot`，`.gitignore` 里那套白名单（`data/*` + 逐类放行、`dev/*` + 只放代码、`.superpowers/`）是按这个根写的，换根就失效——最直接的后果是 `data/.env` 和 129 MB 数据目录会被当成普通文件收进去。
+
+### 1. 提交前 30 秒自检（本地，零网络零费用）
+
+```bash
+cd /f/Qoder/seccopilot
+git status --porcelain                      # 必须空：提交包只从 HEAD 打
+SKIP_LLM=1 npm test 2>&1 | tail -6          # 必须 fail 0
+npx tsc -p tsconfig.functions.json          # 必须 exit 0
+```
+
+11-15 实测：`34 tests / 15 pass / 0 fail / 19 skipped`、`tsc` exit 0、`npm run build` 成功。
+
+### 2. 打提交包（用 git archive，不要用压缩软件压工作目录）
+
+```bash
+cd /f/Qoder/seccopilot
+git archive --format=zip --prefix=seccopilot/ \
+  -o /f/Qoder/submit-2026-11-15/seccopilot-code.zip HEAD \
+  -- . ':(exclude)docs/superpowers'
+```
+
+`git archive HEAD` 只会装**已跟踪且已提交**的文件，所以 `data/.env`、129 MB 数据、`node_modules`、`.superpowers/` 结构上就进不来。打完必须验一遍（这一步不能省，"看起来没带"和"扫过没带"是两件事）：
+
+```bash
+python - <<'PY'
+import zipfile,re
+f=zipfile.ZipFile(r'F:/Qoder/submit-2026-11-15/seccopilot-code.zip'); n=f.namelist()
+keys=[x for x in n if not x.endswith('/') and re.search(rb'sk-[A-Za-z0-9]{20,}',f.read(x))]
+bad=[x for x in n if re.search(r'\.env$|node_modules|\.superpowers|kb_raw|phase2_emb',x)]
+print('entries',len(n),'key_hits',keys or 0,'forbidden',bad or 0)
+PY
+```
+
+预期 `key_hits 0 / forbidden 0`。检测器有效性已单独验证：同一个正则在 `data/.env` 的真实 key 上是命中的，所以这个 0 不是"正则写错了"。
+
+两个变体都在暂存目录里：`seccopilot-code.zip`（156 条 / 345 KB，不含 `docs/superpowers/`，**建议交这个**）与 `seccopilot-code-with-plans.zip`（162 条 / 415 KB，含冲刺计划与收尾方案，会暴露排期和"评委视角"那一节）。
+
+### 3. 天池表单五个字段填什么
+
+| 字段 | 内容 | 来源 |
+| --- | --- | --- |
+| 正文 | 全文粘 `docs/competition-post.md`（头部已写"数据截至 2026-11-15"，并区分本地/线上口径） | `docs/competition-post.md` |
+| 标题 | SecCopilot：一个会说"我不知道"的安全研究助手 | 同上第 1 行 |
+| 在线体验 | `https://seccopilot-kpa8w0w9u7e.qoder.zone`（11-15 实测首页 http 200 / stats 5,397 / chat 200 11.2 s） | `get_site` + curl |
+| 代码包 | `F:\Qoder\submit-2026-11-15\seccopilot-code.zip` | 上一条命令 |
+| 视频 | **暂时空着**（实拍排在 11-23~24，必须在发布后的线上版上录） | 本文件第三节 |
+
+### 4. 提交之后干什么
+
+1. **回仓库记一条"提交回执"**：`git log -1` 的 HEAD 号、包名、sha256、天池提交时间写进 `docs/competition-post.md` 末尾或单独一行 README 备注。目的：日后能说清"我们交的是哪一版代码"。
+2. **不要在提交后立刻改口径**。提交这一版本 `293d8c0` 之后，代码侧继续按第三节走（Task 4 → 5/6 → 7 → 11-19 发布）。
+3. **发布班车成功后（11-19）必须重测并重交**：跑全量 `npm test` + `node scripts/eval.mjs` + `node scripts/probe-online-kev.mjs`，把"第二栏不是线上数字"那几句改成线上数字，重新 `git archive` 打一个新包（包名带日期），在天池更新提交。若天池允许多次提交，这一步是免费的；若只允许一次提交，那就**不要现在交**，等 11-19 之后再交——这条判断需要你确认提交页规则，我无法替平台决定。
+4. **提交后 48 小时内别动 `functions/**`**，除非是 Task 4/5/6 的计划内改动。理由：作品帖里所有数字都锚在某个 HEAD 上，代码乱动会让"哪版对应哪个包"这条链断掉。
+5. **仓库公开（如果赛题要求开源）之前**：那把 DashScope key 仍然建议轮换——本仓库 24 个提交里实测扫不到它（仓库 11-12 才建，硬编码版本早于 git），但 key 在本地明文存着且进过其他会话；同时决定 `docs/superpowers/` 是否随包发布。
+
+### 5. 提交后立刻可做的两件不依赖发布的事
+
+- Task 4 的 `kevUnderCount`（防"说少了"，见冲刺计划 Task 4 接口块）——纯函数 + 离线打桩，`SKIP_LLM=1` 就能验。
+- 把作品帖"接下来做什么"那一节（`:206` 附近）按发布前后的措辞再走一遍，确保交出去的版本里没有任何"已修复"字样指着未发布的代码。
+
+---
+
 ## 附：今天的提交
 
 | 提交 | 内容 |
