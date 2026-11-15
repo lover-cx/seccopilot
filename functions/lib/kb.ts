@@ -168,3 +168,127 @@ export async function nvdLive(question: string, limit = 3): Promise<Doc[]> {
   }
   return out;
 }
+
+// ── 第 2 层：CISA KEV 现查目录（"在野利用"是有门槛的断言，本地快照会过期）──────
+// 实测 2026-11-14：本地 KEV 快照是 2026.11.09，而目录已是 2026.11.13、1781 条，
+// 按 dateAdded 落在 2026 年的微软 Office 有 5 条（2009-0556、21509、21514、2009-0238、124194），
+// 按 CVE 编号年份算是 3 条（21509、21514、124194）——最后一条 11-10 才新增、本地库没有。两个口径都要写，只写一个必然引起矛盾。
+// 目录只有一个 URL、无鉴权、约 1.8 MB，因此按 isolate 缓存 6 小时；拉不到时返回 null，
+// 让上层说"本地快照 vX 未收录"而不是"KEV 未收录"——把"没查到"说成"不存在"是本项目明令禁止的。
+export const KEV_SNAPSHOT_VERSION = "2026.11.09";
+const KEV_FEED = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json";
+const KEV_TTL_MS = 6 * 60 * 60 * 1000;
+
+export interface KevEntry {
+  cveID: string; vendorProject: string; product: string; vulnerabilityName: string;
+  dateAdded: string; dueDate: string; requiredAction: string;
+}
+
+let kevCache: { at: number; map: Map<string, KevEntry> } | null = null;
+
+export async function kevCatalog(force = false): Promise<Map<string, KevEntry> | null> {
+  if (!force && kevCache && Date.now() - kevCache.at < KEV_TTL_MS) return kevCache.map;
+  try {
+    const r = await fetch(KEV_FEED, { signal: AbortSignal.timeout(12000) });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const list = d?.vulnerabilities;
+    if (!Array.isArray(list) || !d?.catalogVersion) return null; // 结构异常 ≠ 空目录
+    const map = new Map<string, KevEntry>();
+    for (const v of list) {
+      if (!v?.cveID) continue;
+      map.set(String(v.cveID).toUpperCase(), {
+        cveID: String(v.cveID).toUpperCase(),
+        vendorProject: v.vendorProject ?? "", product: v.product ?? "",
+        vulnerabilityName: v.vulnerabilityName ?? "",
+        dateAdded: v.dateAdded ?? "", dueDate: v.dueDate ?? "",
+        requiredAction: v.requiredAction ?? "",
+      });
+    }
+    kevCache = { at: Date.now(), map };
+    return map;
+  } catch { return null; }
+}
+
+/** 纯函数：目录条目 → 本地库同款正文前缀，使 kevFacts() 的 KEV_MARK_RE 直接可用。 */
+export function kevDocs(entries: KevEntry[]): Doc[] {
+  return entries
+    .filter((e) => e.cveID && e.dateAdded)
+    .map((e) => ({
+      id: `kev:${e.cveID}`,
+      title: `${e.cveID}: ${clip(e.vulnerabilityName, 90)}`,
+      content: `在野利用（CISA KEV）｜厂商：${e.vendorProject}｜产品：${e.product}`
+        + `｜KEV 收录：${e.dateAdded}｜修复期限：${e.dueDate}\n`
+        + `漏洞名：${e.vulnerabilityName}\n处置要求：${clip(e.requiredAction, 200)}`,
+      source_url: `https://www.cisa.gov/known-exploited-vulnerabilities-catalog?selected_cve=${e.cveID}`,
+      category: "cve", similarity: 1, anchor: true, live: true,
+    }));
+}
+
+/** 按编号取目录条目 → Doc（映射只写在 kevDocs 一处，这里只做筛选）。 */
+export function kevFromCatalog(entries: KevEntry[], ids: string[]): Doc[] {
+  const want = new Set(ids.map((x) => x.toUpperCase()));
+  return kevDocs(entries.filter((e) => want.has(e.cveID.toUpperCase())));
+}
+
+// "来源词"不是产品词：不排除的话，任何提 CISA/KEV 的问题都会把这些词当产品拿去子串匹配。
+const KEV_STOP_TOKENS = new Set(["cisa", "kev", "cve", "nvd", "cvss", "stix", "mitre", "api", "kb"]);
+// 中文厂商别名 → 目录里的英文写法。只放实测/高频会出现在中文问题里的厂商，不做通用翻译。
+const KEV_VENDOR_ALIAS: Record<string, string> = {
+  "微软": "microsoft", "苹果": "apple", "谷歌": "google", "安卓": "android",
+  "甲骨文": "oracle", "思科": "cisco", "飞塔": "fortinet", "帕洛阿尔托": "palo alto",
+};
+
+/**
+ * 纯函数：不依赖问题里出现 CVE 编号，也能从目录里捞出"这个厂商/产品"的在野利用条目。
+ * 存在的理由写在第 9 条缺陷里：旗标题真实失败那次是语义检索空集 → keyword() 兜底不相干条目，
+ * 那次没有编号可查，只有 id 入口的目录层在最需要它的路径上不会被触发。
+ * 匹配口径：问题里的 ASCII 词（去掉来源词）+ 中文厂商别名合成 terms；用目录自己的 vendorProject 取值把 terms 分成
+ * 产品词与厂商词，**只有产品词命中 product 才算产品级命中**；问题里出现 20xx 时按 dateAdded 前缀收窄；倒序取前 12 条。
+ * **最具体信号优先**：有产品级命中时只保留它们，否则退回厂商/名称匹配。这条不是风格问题，是真目录实测出来的两件事：
+ * 三字段 OR 时"微软 Office + 2026"命中 42 条、截 12 后 21509 与 21514 双双被挤掉；而目录里 CVE-2026-42897 的
+ * product 与 vendorProject 都写 "Microsoft"，把厂商词当产品词就会让它冒充产品命中、把 5 条变成 6 条。
+ * 一个词都没命中时返回空数组——绝不允许"没匹配到就把整个目录塞进上下文"。
+ */
+export function kevScopeMatches(question: string, entries: Iterable<KevEntry>): KevEntry[] {
+  const raw = String(question ?? "");
+  const ascii = (raw.match(/[A-Za-z][A-Za-z0-9.\-/]{2,24}/g) ?? [])
+    .map((s) => s.toLowerCase()).filter((s) => !KEV_STOP_TOKENS.has(s));
+  const alias = Object.entries(KEV_VENDOR_ALIAS)
+    .filter(([zh, en]) => en && raw.includes(zh)).map(([, en]) => en.toLowerCase());
+  const terms = [...new Set([...ascii, ...alias])];
+  if (!terms.length) return [];
+  const year = (raw.match(/20\d{2}/) ?? [])[0] ?? null;
+  const list = [...entries];
+  // 厂商词表不另起一张表：目录里 vendorProject 出现过什么，什么就是厂商词（实测 295 个不同取值）。
+  const vendorWords = new Set(list.map((e) => String(e.vendorProject ?? "").toLowerCase().trim()));
+  const productTerms = terms.filter((t) => !vendorWords.has(t));
+  // 逐条分别记录"产品级命中"与"厂商/名称命中"：产品是更具体的信号，需要按字段分开才知道该不该收窄。
+  const hit = list.map((e) => {
+    const prod = String(e.product ?? "").toLowerCase();
+    const vend = String(e.vendorProject ?? "").toLowerCase();
+    const name = String(e.vulnerabilityName ?? "").toLowerCase();
+    return { e, byProduct: productTerms.some((t) => prod.includes(t)), byVendor: terms.some((t) => vend.includes(t) || name.includes(t)) };
+  }).filter((h) => h.byProduct || h.byVendor);
+  const scoped = hit.some((h) => h.byProduct) ? hit.filter((h) => h.byProduct) : hit;
+  return scoped
+    .map((h) => h.e)
+    .filter((e) => !year || String(e.dateAdded ?? "").startsWith(year))
+    .sort((a, b) => String(b.dateAdded).localeCompare(String(a.dateAdded)))
+    .slice(0, 12);
+}
+
+/** 按编号现查：confirmed=目录里有（带日期），absent=目录里确实没有，unavailable=目录没拉到。 */
+export async function kevLookup(ids: string[]): Promise<{ confirmed: KevEntry[]; absent: string[]; unavailable: boolean }> {
+  const uniq = [...new Set(ids.map((x) => x.toUpperCase()))];
+  if (!uniq.length) return { confirmed: [], absent: [], unavailable: false };
+  const map = await kevCatalog();
+  if (!map) return { confirmed: [], absent: [], unavailable: true };
+  const confirmed: KevEntry[] = [];
+  const absent: string[] = [];
+  for (const id of uniq) {
+    const e = map.get(id);
+    if (e) confirmed.push(e); else absent.push(id);
+  }
+  return { confirmed, absent, unavailable: false };
+}

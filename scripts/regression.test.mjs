@@ -307,12 +307,25 @@ let gapFacts = null;
 let dropOffTacticDocs = null;
 let requestedTactic = null;
 let kevFacts = null;
+// CISA KEV 现查目录层（functions/lib/kb.ts）：4 个纯函数 + 1 个带缓存的取数函数。
+// kevCatalog 也要存进顶层变量——Step 4 的真实目录范围查询用例直接对它取全量条目。
+let kevFromCatalog = null;
+let kevLookup = null;
+let kevScopeMatches = null;
+let kevDocs = null;
+let kevCatalog = null;
 try {
   const m = await import("../functions/lib/chat.ts");
   gapFacts = m.localTimeGapFacts;
   dropOffTacticDocs = m.dropOffTacticDocs;
   requestedTactic = m.requestedTactic;
   kevFacts = m.kevFacts;
+  const kb = await import("../functions/lib/kb.ts");
+  kevFromCatalog = kb.kevFromCatalog;
+  kevLookup = kb.kevLookup;
+  kevScopeMatches = kb.kevScopeMatches;
+  kevDocs = kb.kevDocs;
+  kevCatalog = kb.kevCatalog;
 } catch { /* Node 版本不支持 .ts 直读时跳过本用例 */ }
 
 test("localTimeGapFacts：只在本地库确实缺该时间窗条目时兜底", () => {
@@ -400,6 +413,108 @@ test("kevFacts：在野利用只能引用带 KEV 标注的资料", () => {
   assert.match(msg, /禁止把它们列进/);
   assert.match(kevFacts(q, [plainDoc]), /没有任何条目/, "全部无 KEV 标注时应说明清单为空");
   assert.equal(kevFacts("CWE-79 是什么弱点？如何缓解？", [kevDoc]), "", "非 KEV 问题不该插入这段");
+});
+
+// 纯函数回归：本地 KEV 快照停在 2026.11.09，而目录里按 dateAdded 落在 2026 年的微软 Office 已有 5 条
+// （按 CVE 编号年份算是 3 条：21509、21514、124194，最后一条 2026-11-10 新增）。现查目录必须能把它们转成带 KEV 标注的资料，
+// 否则 kevFacts() 的闸门会把它当"无 KEV 证据"处理——那就是第 9 条缺陷的根因之一。
+test("kevFromCatalog：目录条目转成带 KEV 前缀的资料（本地快照缺的那条也能进闸门）", () => {
+  if (!kevFromCatalog) return t_skip();
+  const entries = new Map([
+    ["CVE-2026-21509", { cveID: "CVE-2026-21509", vendorProject: "Microsoft", product: "Office",
+      vulnerabilityName: "Microsoft Office Security Feature Bypass Vulnerability",
+      dateAdded: "2026-01-26", dueDate: "2026-02-16", requiredAction: "Apply patch." }],
+    ["CVE-2026-124194", { cveID: "CVE-2026-124194", vendorProject: "Microsoft", product: "Office",
+      vulnerabilityName: "Microsoft Office Outlook Missing User Interaction Vulnerability",
+      dateAdded: "2026-11-10", dueDate: "2026-11-24", requiredAction: "Apply patch." }],
+  ]);
+  const docs = kevFromCatalog([...entries.values()], ["CVE-2026-21509", "CVE-2026-124194"]);
+  assert.equal(docs.length, 2, "两条都应在目录里命中");
+  assert.match(docs[0].content, /^在野利用（CISA KEV）｜厂商：Microsoft｜产品：Office｜KEV 收录：2026-01-26｜修复期限：2026-02-16/);
+  assert.equal(docs[0].live, true, "现查目录的资料必须标 live，前端才不会当成本库条目");
+  assert.equal(docs[0].source_url, "https://www.cisa.gov/known-exploited-vulnerabilities-catalog?selected_cve=CVE-2026-21509");
+  // 闸门认识它：本地资料里只有这条快照没有的编号时，kevFacts 也应把它列进证据清单
+  const msg = kevFacts("2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？", docs);
+  assert.match(msg, /CVE-2026-124194（收录 2026-11-10）/);
+  // 目录里没有的编号 → 空文档，不是异常
+  assert.equal(kevFromCatalog([...entries.values()], ["CVE-2099-00001"]).length, 0);
+});
+
+// 纯函数回归：旗标题真实失败那一次是"语义检索空集 → keyword() 兜底不相干条目"（见 docs/competition-post.md 第 9 条），
+// 那次问题里没有 CVE 编号，kevLookup(ids) 无从查起。按范围查目录才是那条路径的入口，所以它必须是纯函数、可离线钉住。
+test("kevScopeMatches：问题里点厂商/产品（或中文别名）+ 年份时，不依赖编号也能从目录里捞出对应条目", () => {
+  if (!kevScopeMatches) return t_skip();
+  const e = (cveID, vendorProject, product, vulnerabilityName, dateAdded) =>
+    ({ cveID, vendorProject, product, vulnerabilityName, dateAdded, dueDate: "", requiredAction: "" });
+  const all = [
+    e("CVE-2026-21509", "Microsoft", "Office", "Microsoft Office Security Feature Bypass Vulnerability", "2026-01-26"),
+    e("CVE-2026-21514", "Microsoft", "Office", "Microsoft Office Word Reliance on Untrusted Inputs in a Security Decision Vulnerability", "2026-02-10"),
+    e("CVE-2026-124194", "Microsoft", "Office", "Microsoft Office Outlook Missing User Interaction Vulnerability", "2026-11-10"),
+    e("CVE-2025-00001", "Microsoft", "Office", "Microsoft Office Old One", "2025-03-03"),
+    // 这条存在的唯一理由就是钉住"三字段 OR"这个写法：问题里同时出现"微软"与 Office 时，
+    // 若实现按 vendorProject/product/vulnerabilityName 任一命中就算范围命中，它会被捞进来（真实目录里这样的条目有 41 条）；
+    // 按"最具体信号优先"它必须被排除，而只问厂商不带产品时它又必须在结果里。
+    e("CVE-2026-99999", "Microsoft", "Windows", "Microsoft Windows Remote Code Execution Vulnerability", "2026-06-06"),
+    // 这条照抄真目录里 CVE-2026-42897 的形状：vendorProject 与 product 都是 "Microsoft"（实际是 Exchange Server XSS）。
+    // 它专治"把厂商别名当产品词"——那种写法会让它算产品级命中，Office 的 5 条变 6 条。
+    e("CVE-2026-42897", "Microsoft", "Microsoft", "Microsoft Exchange Server Cross-Site Scripting Vulnerability", "2026-05-15"),
+    e("CVE-2026-77777", "Adobe", "Acrobat", "Adobe Acrobat Reader Out of Bounds Vulnerability", "2026-05-05"),
+  ];
+  // ① 英文产品词 + 中文厂商别名同时命中，年份把 2025 那条筛掉
+  const office2026 = kevScopeMatches("2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？", all);
+  assert.deepEqual(office2026.map((x) => x.cveID), ["CVE-2026-124194", "CVE-2026-21514", "CVE-2026-21509"],
+    "应只含 2026 年微软 Office 三条，且按 dateAdded 倒序（新的在前）");
+  assert.ok(!office2026.some((x) => x.cveID === "CVE-2025-00001"), "带年份的问题不得混入上一年的条目");
+  assert.ok(!office2026.some((x) => x.cveID === "CVE-2026-77777"), "别厂商不得混入");
+  assert.ok(!office2026.some((x) => x.cveID === "CVE-2026-99999"),
+    "问题点了产品就只能看该产品：同厂商别的产品不得混入（三字段 OR 的写法会把这条带进来）");
+  assert.ok(!office2026.some((x) => x.cveID === "CVE-2026-42897"),
+    "厂商别名解析出的 microsoft 不得当产品词：product 与 vendorProject 同名的条目不是 Office");
+  // ② 不提年份 → 同一产品的新旧条目都算范围命中，仍然不含别的产品
+  assert.equal(kevScopeMatches("微软 Office 有哪些在野利用漏洞？", all).length, 4);
+  // ②' 只点厂商、不点产品 → "最具体信号优先"不得退化成"只认产品"，该厂商当年全部条目都要在
+  const msOnly = kevScopeMatches("微软 2026 年有哪些在野利用漏洞？", all);
+  assert.ok(msOnly.some((x) => x.cveID === "CVE-2026-99999"), "只问厂商时 Windows 条目必须在结果里");
+  assert.equal(msOnly.length, 5, "微软 + 2026 应为 21509、21514、124194、99999、42897 五条");
+  // ③ 问题没点任何厂商/产品 → 空数组，绝不"全量塞进上下文"
+  assert.deepEqual(kevScopeMatches("什么是零日漏洞？", all), []);
+  // ④ CISA/KEV/CVE 这类"来源词"不得当产品词用——否则任何 KEV 题都会匹配到含 CISA 字样的条目
+  assert.deepEqual(kevScopeMatches("KEV 目录里 CISA 收录了哪些 CVE 编号？", all), []);
+  // ⑤ 转成的 Doc 走同一个前缀格式（闸门可直接识别），且与 kevFromCatalog 共用映射
+  const docs = kevDocs(office2026);
+  assert.equal(docs.length, 3);
+  assert.match(docs[0].content, /^在野利用（CISA KEV）｜厂商：Microsoft｜产品：Office｜KEV 收录：2026-11-10/);
+  assert.equal(docs[0].live, true);
+});
+
+// 这条会真的打 cisa.gov（约 1.8 MB / 6 小时缓存），所以和 LLM 用例一样受 SKIP_LLM 管：
+// SKIP_LLM=1 npm test 必须保持"零网络、零模型费用"，这是 Global Constraints 里的硬约定。
+test("kevCatalog：现查目录能确认 CVE-2026-21509 的收录日期，且 124194 只在目录里", async (t) => {
+  if (SKIP_LLM) return t.skip("SKIP_LLM=1");
+  if (!kevLookup) return t_skip();
+  const r = await kevLookup(["CVE-2026-21509", "CVE-2026-124194", "CVE-2099-00001"]);
+  if (r.unavailable) { console.warn("  [warn] CISA 目录当前不可达（本机需 HTTPS_PROXY；线上未验证）"); return; }
+  const byId = Object.fromEntries(r.confirmed.map((e) => [e.cveID, e]));
+  assert.equal(byId["CVE-2026-21509"]?.dateAdded, "2026-01-26", "旗标题的收录日期必须与判分口径一致");
+  assert.match(byId["CVE-2026-21509"]?.vulnerabilityName ?? "", /Security Feature Bypass/);
+  assert.equal(byId["CVE-2026-124194"]?.dateAdded, "2026-11-10", "本地快照没有、目录里有的那条应被确认");
+  assert.ok(r.absent.includes("CVE-2099-00001"), "目录里确实没有的编号应落 absent，不是报错");
+  assert.ok(!r.absent.includes("CVE-2026-21509"), "确认过的编号不得同时出现在 absent 里");
+});
+
+// 同一条真实目录，钉住"最具体信号优先"：合成 fixture 只有 6 条，看不出三字段 OR 的代价；
+// 真目录里 Microsoft + 2026 有 41 条，若按 OR 匹配再截 12 条，结果会被 Windows/Edge 之类淹掉——
+// 那正是 Task 4 注入路径失效的形态，而它只在打真目录时才暴露。
+test("kevScopeMatches：真实目录上按产品收窄，旗标题只应返回 Office 条目", async (t) => {
+  if (SKIP_LLM) return t.skip("SKIP_LLM=1");
+  if (!kevScopeMatches) return t_skip();
+  const map = await kevCatalog();
+  if (!map) { console.warn("  [warn] CISA 目录当前不可达（本机需 HTTPS_PROXY；线上未验证）"); return; }
+  const hits = kevScopeMatches("2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？", [...map.values()]);
+  assert.ok(hits.length >= 3, `按 dateAdded 落在 2026 的 Office 条目应至少 3 条，实际 ${hits.length}`);
+  assert.ok(hits.every((e) => /office/i.test(String(e.product))),
+    `命中里出现了非 Office 产品：${hits.map((e) => `${e.cveID}/${e.product}`).join(", ")}`);
+  assert.ok(hits.some((e) => e.cveID === "CVE-2026-124194"), "本地快照缺的那条必须由范围查询捞出");
 });
 
 test("chat：mode=on 不得把未经 KEV 确认的编号说成在野利用", async (t) => {
