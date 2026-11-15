@@ -14,6 +14,11 @@
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "test": "node --test scripts/regression.test.mjs",
+    "test:offline": "node scripts/run-offline-tests.mjs",
+    "submit:package": "node scripts/package-submission.mjs",
+    "submit:package:with-plans": "node scripts/package-submission.mjs --include-plans",
+    "submit:audit": "node scripts/audit-submission.mjs",
+    "submit:audit:selfcheck": "node scripts/audit-submission.mjs --selfcheck",
     "dev:function": "deno run --allow-net=127.0.0.1:8000 dev/function-local.ts",
     "dev:function:node": "node dev/function-node.ts",
     "check:function": "tsc -p tsconfig.functions.json"
