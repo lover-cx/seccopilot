@@ -122,47 +122,64 @@
 
 | 路径 | 是什么 | 在这里做什么 |
 | --- | --- | --- |
-| `F:\Qoder\seccopilot` | **项目仓库根**（`git rev-parse --show-toplevel` 实测输出），分支 `main`，24 个提交，无 remote | 所有代码/文档/测试/打包命令都在这里跑；`git init` **已经做过，不要再 init** |
-| `F:\Qoder\submit-2026-11-15` | 提交产物暂存区（在仓库外，不在 git 里） | 只放打好的 zip；上传天池就从这里选文件 |
-| `F:\Qoder` | 上面两个目录的父目录，**不是仓库** | 别在这里 `git init`，否则会在 `seccopilot` 外面套一层仓库 |
+| `F:\Qoder\seccopilot` | **项目仓库根**（`git rev-parse --show-toplevel` 实测输出），分支 `main`，28 个提交，无 remote | 所有代码/文档/测试/打包命令都在这里跑；`git init` **已经做过，不要再 init** |
+| `F:\Qoder\seccopilot\.superpowers\submission\` | 打包脚本的规范输出目录（`.superpowers/` 被 gitignore，不会污染仓库、也不会被下次打包收进去） | `npm run submit:package` 就往这里写 |
+| `F:\Qoder\submit-2026-11-15\` | 上传用的暂存副本，在仓库外 | 天池表单选文件从这里选，路径短、好找 |
+| `F:\Qoder` | 上面的父目录，**不是仓库** | 别在这里 `git init`，否则会在 `seccopilot` 外面套一层仓库 |
 
 **不要在 `F:\Qoder` 下再 `git init`。** 现有仓库根是 `F:\Qoder\seccopilot`，`.gitignore` 里那套白名单（`data/*` + 逐类放行、`dev/*` + 只放代码、`.superpowers/`）是按这个根写的，换根就失效——最直接的后果是 `data/.env` 和 129 MB 数据目录会被当成普通文件收进去。
 
-### 1. 提交前 30 秒自检（本地，零网络零费用）
+### 0b. 命令一律走 npm 脚本，不要在命令行里拼 shell 语法
 
-```bash
-cd /f/Qoder/seccopilot
-git status --porcelain                      # 必须空：提交包只从 HEAD 打
-SKIP_LLM=1 npm test 2>&1 | tail -6          # 必须 fail 0
-npx tsc -p tsconfig.functions.json          # 必须 exit 0
+11-15 有人**在 `cmd.exe` 里**照抄本文件早先给的 bash 命令，三条翻了车，其中一条最危险：
+
+- `SKIP_LLM=1 npm test 2>&1 | tail -6` 在 cmd 里既不赋值环境变量、也没有 `tail`，**整条静默不执行**，输出是空的——"没报错"被当成"通过了"。掉线的检查比红掉的检查更危险。
+- `git archive ... -- . ':(exclude)docs/superpowers'` 里的单引号与续行反斜杠被 cmd 原样吞掉，报 `could not open '/f/Qoder/...' for writing: No such file or directory`（`/f/...` 是 Git Bash 的路径写法）。
+- `python - <<'PY'` 那种 heredoc 在 cmd 里是 `此时不应有 <<。`。
+
+所以这三步各自收进一个 Node 脚本，走 `spawn` 传参数数组、不过 shell，**cmd / PowerShell / Git Bash 里都是同一条命令、同一份语义**：
+
+```
+cd /d F:\Qoder\seccopilot           （Git Bash 里是 cd /f/Qoder/seccopilot）
+npm run test:offline                → 脚本内强制 SKIP_LLM=1，零网络零模型费用
+npm run submit:package              → git archive HEAD 打包 + 打印路径/大小/sha256
+npm run submit:audit                → 审计将要进包的每个 blob
+npm run submit:audit:selfcheck      → 证明审计判据自己能判红（18 项）
 ```
 
-11-15 实测：`34 tests / 15 pass / 0 fail / 19 skipped`、`tsc` exit 0、`npm run build` 成功。
+`npx tsc -p tsconfig.functions.json` 那条本来就跨 shell，可以直接用；`npm run check:function` 是它的别名。
 
-### 2. 打提交包（用 git archive，不要用压缩软件压工作目录）
+### 1. 提交前自检（本地，零网络零费用）
 
-```bash
-cd /f/Qoder/seccopilot
-git archive --format=zip --prefix=seccopilot/ \
-  -o /f/Qoder/submit-2026-11-15/seccopilot-code.zip HEAD \
-  -- . ':(exclude)docs/superpowers'
+```
+npm run test:offline
+npm run check:function
+git status --porcelain
 ```
 
-`git archive HEAD` 只会装**已跟踪且已提交**的文件，所以 `data/.env`、129 MB 数据、`node_modules`、`.superpowers/` 结构上就进不来。打完必须验一遍（这一步不能省，"看起来没带"和"扫过没带"是两件事）：
+11-15 实测：`34 tests / 15 pass / 0 fail / 19 skipped`、`tsc` exit 0、`npm run build` 成功、`git status --porcelain` 空。
 
-```bash
-python - <<'PY'
-import zipfile,re
-f=zipfile.ZipFile(r'F:/Qoder/submit-2026-11-15/seccopilot-code.zip'); n=f.namelist()
-keys=[x for x in n if not x.endswith('/') and re.search(rb'sk-[A-Za-z0-9]{20,}',f.read(x))]
-bad=[x for x in n if re.search(r'\.env$|node_modules|\.superpowers|kb_raw|phase2_emb',x)]
-print('entries',len(n),'key_hits',keys or 0,'forbidden',bad or 0)
-PY
+### 2. 打提交包并审计
+
+```
+npm run submit:package
+npm run submit:audit
 ```
 
-预期 `key_hits 0 / forbidden 0`。检测器有效性已单独验证：同一个正则在 `data/.env` 的真实 key 上是命中的，所以这个 0 不是"正则写错了"。
+`npm run submit:package` 内部就是 `git archive HEAD`——只装**已跟踪且已提交**的文件，所以 `data/.env`、129 MB 数据、`node_modules`、`.superpowers/` 结构上就进不来；打完立刻用 `npm run submit:audit` 扫一遍 HEAD 的每个 blob（6 种凭据形状 + 6 条禁止路径 + 2 MB 体积上限），预期 `凭据/禁止项命中：0`、`data/.env 在包里的条数：0`、结论行 `可以上传`。
 
-两个变体都在暂存目录里：`seccopilot-code.zip`（156 条 / 345 KB，不含 `docs/superpowers/`，**建议交这个**）与 `seccopilot-code-with-plans.zip`（162 条 / 415 KB，含冲刺计划与收尾方案，会暴露排期和"评委视角"那一节）。
+这一步不能省，也不能只凭"我记得没带"。**判据自己也要被证明能用**：`npm run submit:audit:selfcheck` 同时钉两个方向——6 条凭据判据各有必须命中的合成样本、7 条禁止路径必须命中、11 条良性样本零误伤（11-15 实跑 18 项全过）。这套自检上线当天就抓到三处我自己的错：`_service_role` 那条判据因为 `\b` 后面接下划线没有词边界而**永远不命中**、连接串正则要求冒号紧跟 scheme 所以**永远不命中**、还有一条 `^dev/.*\.md` **误伤**了 `.gitignore` 显式放行的 `dev/README.md`，让脚本把自己仓库判成"不要上传"。前两条是哑判据，第三条是假阳性，两类都会让人对着绿色结果放心。
+
+11-15 实测产物（HEAD `9a0248e`，两处副本 sha256 相同）：
+
+| 文件 | 大小 | sha256 前 12 位 | 内容 |
+| --- | --- | --- | --- |
+| `seccopilot-code.zip` | 352 KB | `b6959d6c4acf` | 144 个文件，排除 `docs/superpowers/`（**默认交这个**） |
+| `seccopilot-code-with-plans.zip` | 424 KB | `df6e81a32094` | 147 个文件，含冲刺计划与本方案 |
+
+可复现性实测过：同一 HEAD 重打两次拿到同一个 sha256（`git archive` 用固定时间戳写 zip 条目），所以包哈希可以当提交物的身份凭证用；早先 bash 手打的与 Node 打的也拿到过同一个哈希。
+
+两个变体的取舍：交 `seccopilot-code.zip`，内部排期与"评委视角"那一节不给评委看——过程证据已由作品帖的缺陷台账与两处"已撤回"原文承担，那才是有信息量的部分。
 
 ### 3. 天池表单五个字段填什么
 
@@ -177,10 +194,10 @@ PY
 ### 4. 提交之后干什么
 
 1. **回仓库记一条"提交回执"**：`git log -1` 的 HEAD 号、包名、sha256、天池提交时间写进 `docs/competition-post.md` 末尾或单独一行 README 备注。目的：日后能说清"我们交的是哪一版代码"。
-2. **不要在提交后立刻改口径**。提交这一版本 `293d8c0` 之后，代码侧继续按第三节走（Task 4 → 5/6 → 7 → 11-19 发布）。
+2. **不要在提交后立刻改口径**。提交这一版本 `9a0248e` 之后，代码侧继续按第三节走（Task 4 → 5/6 → 7 → 11-19 发布）。
 3. **发布班车成功后（11-19）必须重测并重交**：跑全量 `npm test` + `node scripts/eval.mjs` + `node scripts/probe-online-kev.mjs`，把"第二栏不是线上数字"那几句改成线上数字，重新 `git archive` 打一个新包（包名带日期），在天池更新提交。若天池允许多次提交，这一步是免费的；若只允许一次提交，那就**不要现在交**，等 11-19 之后再交——这条判断需要你确认提交页规则，我无法替平台决定。
 4. **提交后 48 小时内别动 `functions/**`**，除非是 Task 4/5/6 的计划内改动。理由：作品帖里所有数字都锚在某个 HEAD 上，代码乱动会让"哪版对应哪个包"这条链断掉。
-5. **仓库公开（如果赛题要求开源）之前**：那把 DashScope key 仍然建议轮换——本仓库 24 个提交里实测扫不到它（仓库 11-12 才建，硬编码版本早于 git），但 key 在本地明文存着且进过其他会话；同时决定 `docs/superpowers/` 是否随包发布。
+5. **仓库公开（如果赛题要求开源）之前**：那把 DashScope key 仍然建议轮换——本仓库 28 个提交里实测扫不到它（仓库 11-12 才建，硬编码版本早于 git），但 key 在本地明文存着且进过其他会话；同时决定 `docs/superpowers/` 是否随包发布。
 
 ### 5. 提交后立刻可做的两件不依赖发布的事
 
