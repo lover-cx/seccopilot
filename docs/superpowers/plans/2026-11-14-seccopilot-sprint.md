@@ -513,7 +513,8 @@ Task 1 Step 3 的计划正文要求 `dev/README.md` 说明"脚本入库、留档
   - `export async function kevLookup(ids: string[]): Promise<{ confirmed: KevEntry[]; absent: string[]; unavailable: boolean }>`
   - `export function kevFromCatalog(entries: KevEntry[], ids: string[]): Doc[]`（纯函数，把目录条目转成 `Doc`，`id: \`kev:${cveID}\`、`category: "cve"`、`live: true`、正文沿用本地 KEV 前缀格式，让现有 `kevFacts()` 的 `KEV_MARK_RE` 能直接识别）
   - `export function kevDocs(entries: KevEntry[]): Doc[]`（同一套映射，不按编号过滤；`kevFromCatalog` 改为"先按 ids 筛、再交给 `kevDocs`"，两段逻辑不得各写一遍）
-  - `export function kevScopeMatches(question: string, entries: Iterable<KevEntry>): KevEntry[]`（**纯函数，按范围查目录**：从问题里取 ASCII 词 + 一张很小的中文厂商别名表，问题里出现年份时用 `dateAdded` 前缀收窄，按 `dateAdded` 倒序取前 12 条。
+  - `export function kevScopeMatches(question: string, entries: Iterable<KevEntry>): { entries: KevEntry[]; scope: "product" | "vendor" | "name" | null; totalMatched: number }`（**纯函数，按范围查目录**：从问题里取 ASCII 词 + 一张很小的中文厂商别名表，问题里出现年份时用 `dateAdded` 前缀收窄，按 `dateAdded` 倒序取前 12 条。
+    **返回形状在 2026-11-15 由 controller 改过一次（原为裸 `KevEntry[]`）**，理由有两条实测：① `kb.ts` 在产品词打空时会回落到厂商/名称匹配，`微软 Zoom 2026 年…` 会返回 12 条产品五花八门的 Microsoft 条目，调用方必须能从 `scope` 看出自己拿的是回落集合；② `slice(0, 12)` 是硬截断，`微软 2026 年…` 返回 12 条而同目录真有 **41** 条，Task 4 要把这个集合当证据渲染给模型，`totalMatched > entries.length` 时措辞只能写"示例 12 / 共 41"，不能写成清单即全部——**否则就是第 10 条缺陷（"只送了 5 条"被当成"世上只有 5 条"）在目录层重演一遍**。
     **匹配口径必须是"最具体信号优先"，不是三字段 OR，也不能把厂商别名当产品词用**：先从目录里收集 `vendorProject` 的取值集合，
     用它把 terms 分成"产品词"（不在该集合里）与"厂商词"；只有**产品词**命中 `product` 时才算产品级命中并据此收窄，
     一个产品词都没命中产品时才按厂商/名称匹配。
@@ -841,11 +842,24 @@ Expected: `SKIP_LLM=1 npm test` 至少 `# pass 12` 以上（新增 1 个纯函�
 - Modify: `docs/competition-post.md`、`README.md`（写明新增的机制与自测边界）
 
 **Interfaces:**
-- Consumes: `kevLookup(ids)`、`KEV_MARK_RE`、`KEV_HINT`、`Doc`（Task 3 与现有代码）。
+- Consumes: `kevLookup(ids)`、`kevScopeMatches(question, entries) → {entries, scope, totalMatched}`、`KEV_MARK_RE`、`KEV_HINT`、`Doc`（Task 3 与现有代码）。
 - Produces（回归用例和后续任务都用这些名字）：
   - `export function kevAssertedIds(answer: string): string[]` — 逐句判定"在野利用断言 + CVE 编号"，返回去重编号数组。判据与 `scripts/regression.test.mjs:~405` 那段 `bad` 过滤**必须同源**（本项目已经因为判分器与代码各写一遍判据踩过两次坑）。
   - `export function kevCorrection(question: string, answer: string, docs: Doc[], catalog: { confirmed: KevEntry[]; absent: string[]; unavailable: boolean }): KevCheck`
     ——**判据的触发条件看 `question`，不看 `answer`**。理由就是这条任务要修的那个缺陷本身：线上退化回答是"知识库与网络检索均未覆盖 2026 年 CISA 关于 Office 产品漏洞的新增信息。"，正文里既没有"在野"也没有 KEV 字样；如果 guard 去扫正文，这类回答会被判成"与 KEV 无关"直接放行，硬校验永远不触发。第一版草稿正是这样写的，核对时才发现。
+
+  - `export function kevUnderCount(question: string, answer: string, scope: {entries: KevEntry[]; scope: string | null; totalMatched: number}): string | null`
+    ——**第三个失效面：不是"说过头"，是"说少了"。2026-11-15 实测加进来的，Task 3 的 ①② 两条都挡不住它。**
+    当天 `MODE=off N=6`（`docs/eval-archive/online-kev-off-2026-11-15.json`）6/6 判绿，可 6/6 都在结尾把范围收成"符合的只有 CVE-2026-21509"（2/6 直写「仅」），
+    而本地库里明确还有 `CVE-2026-21514`（`action=cve&q=` 命中 1 条、正文带 KEV 前缀），目录按 `dateAdded` 落在 2026 的 Office 条目有 5 条。
+    根因不在模型：`chat.ts:135` 的 `dedupe([...exact, ...semantic]).slice(0, 6)` 把它截在门外（向量 top-5 五条同分 0.74），
+    而题干没有 CVE 编号，`collectLocal` 的锚点路线一条都触发不了——**"只送了 5 条"被模型如实总结成"世上只有 5 条"**。
+    `localTimeGapFacts()` 救不了这一支：它按 `docs` 里的日期算缺口，而 `docs` 里确实有一条 2026 的条目，条件不成立。
+    所以这条必须是**拿目录侧的完整命中集当基准**（`kevScopeMatches`），而不是拿 `docs` 当基准：
+    当问题点明厂商/产品且带年份、`scope === "product"`、而回答给出的 KEV 编号数 `< scope.entries` 中该范围内的条数时，
+    返回一句可照抄的更正文本，要求把"仅 N 条"改成"本次检索到 N 条，KEV 目录在同一范围内共 M 条（`totalMatched`）"。
+    `scope === null` 或 `totalMatched > entries.length`（被 `slice(0,12)` 截断）时**不得**生成"共 M 条"这种全集措辞——
+    这条边界存在的原因与上面 ①② 同源：宁可少断言，不可把"送到眼前的集合"当成"世界的全集"。
 
 - [ ] **Step 1: 写失败用例（把判据钉成代码）**
 
