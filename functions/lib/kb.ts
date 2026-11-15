@@ -210,25 +210,38 @@ export async function kevCatalog(force = false): Promise<Map<string, KevEntry> |
   } catch { return null; }
 }
 
-/** 纯函数：目录条目 → 本地库同款正文前缀，使 kevFacts() 的 KEV_MARK_RE 直接可用。 */
+/**
+ * 纯函数：目录条目 → 本地库同款正文前缀，使 kevFacts() 的 KEV_MARK_RE 直接可用。
+ * 只按 cveID 过滤，不按 dateAdded 过滤：编号是 id／来源链接／闸门识别的唯一锚点，缺了它这条没法引用；
+ * 而收录日期为空不等于"目录里没有"——kevLookup 会把它报成 confirmed，这里整条丢掉就是同一个类的小坑
+ * （实测 2026-11-15：kevFromCatalog([{cveID:"CVE-2026-00001",dateAdded:""}]).length 曾为 0）。
+ * 两个日期位为空时渲染"未知"：kevFacts 的取日期正则匹配不到就只写编号不写日期，条目本身仍进证据清单；
+ * 前端 CvePanel 的 kevInfo() 用 `([^｜]+)` 取值，留空会让它跨过换行贪婪吃掉后面两行。
+ */
 export function kevDocs(entries: KevEntry[]): Doc[] {
   return entries
-    .filter((e) => e.cveID && e.dateAdded)
-    .map((e) => ({
-      id: `kev:${e.cveID}`,
-      title: `${e.cveID}: ${clip(e.vulnerabilityName, 90)}`,
-      content: `在野利用（CISA KEV）｜厂商：${e.vendorProject}｜产品：${e.product}`
-        + `｜KEV 收录：${e.dateAdded}｜修复期限：${e.dueDate}\n`
-        + `漏洞名：${e.vulnerabilityName}\n处置要求：${clip(e.requiredAction, 200)}`,
-      source_url: `https://www.cisa.gov/known-exploited-vulnerabilities-catalog?selected_cve=${e.cveID}`,
-      category: "cve", similarity: 1, anchor: true, live: true,
-    }));
+    .filter((e) => String(e?.cveID ?? ""))
+    .map((e) => {
+      const added = String(e.dateAdded ?? "") || "未知";
+      const due = String(e.dueDate ?? "") || "未知";
+      return {
+        id: `kev:${e.cveID}`,
+        title: `${e.cveID}: ${clip(e.vulnerabilityName, 90)}`,
+        content: `在野利用（CISA KEV）｜厂商：${e.vendorProject}｜产品：${e.product}`
+          + `｜KEV 收录：${added}｜修复期限：${due}\n`
+          + `漏洞名：${e.vulnerabilityName}\n处置要求：${clip(e.requiredAction, 200)}`,
+        source_url: `https://www.cisa.gov/known-exploited-vulnerabilities-catalog?selected_cve=${e.cveID}`,
+        category: "cve", similarity: 1, anchor: true, live: true,
+      };
+    });
 }
 
 /** 按编号取目录条目 → Doc（映射只写在 kevDocs 一处，这里只做筛选）。 */
 export function kevFromCatalog(entries: KevEntry[], ids: string[]): Doc[] {
   const want = new Set(ids.map((x) => x.toUpperCase()));
-  return kevDocs(entries.filter((e) => want.has(e.cveID.toUpperCase())));
+  // 与 kevDocs 一样对缺字段的条目兜底：这两个函数都要导出给 Task 4 打桩用，不对称就是坑
+  // （实测 kevFromCatalog([{vendorProject:"Microsoft"}], ["CVE-2026-21509"]) 曾在 e.cveID 上抛 TypeError）。
+  return kevDocs(entries.filter((e) => want.has(String(e?.cveID ?? "").toUpperCase())));
 }
 
 // "来源词"不是产品词：不排除的话，任何提 CISA/KEV 的问题都会把这些词当产品拿去子串匹配。
@@ -240,6 +253,26 @@ const KEV_VENDOR_ALIAS: Record<string, string> = {
 };
 
 /**
+ * kevScopeMatches 的返回形状（2026-11-15 controller 裁定，取代 brief 里的 KevEntry[]）：
+ * 光给一个数组，调用方看不出这个数组是"按最具体信号收窄出来的"还是"回落集合"，也看不出有没有被截断。
+ * - scope：本次命中靠哪条规则拿到。product=产品级命中；vendor/name=回落集合（产品词一个都没命中产品）。
+ *   实测必须区分：`微软 Zoom 2026 年有哪些在野利用漏洞？` 会返回 12 条产品五花八门的 Microsoft 条目，
+ *   问 Zoom 答全家桶——只有 scope:"vendor" 能让 Task 4 改口。一条规则都没命中 → null。
+ * - totalMatched：**截断前**的命中总数（年份收窄之后、slice(0,12) 之前）。
+ *   实测 `微软 2026 年有哪些在野利用漏洞？` 在 2026.11.13 目录里真有 41 条而只返回 12 条，
+ *   totalMatched>entries.length 时措辞必须写"示例 12 条／共 41 条"，不能把清单当全部。
+ * scope 在年份收窄之前判定：年份筛空时 scope 仍标出命中了哪条规则、totalMatched=0，
+ * 调用方因此能分辨"问了个目录里没有的范围"与"范围对、但该年没有条目"。
+ */
+export type KevScope = "product" | "vendor" | "name" | null;
+
+export interface KevScopeResult {
+  entries: KevEntry[];
+  scope: KevScope;
+  totalMatched: number;
+}
+
+/**
  * 纯函数：不依赖问题里出现 CVE 编号，也能从目录里捞出"这个厂商/产品"的在野利用条目。
  * 存在的理由写在第 9 条缺陷里：旗标题真实失败那次是语义检索空集 → keyword() 兜底不相干条目，
  * 那次没有编号可查，只有 id 入口的目录层在最需要它的路径上不会被触发。
@@ -248,34 +281,49 @@ const KEV_VENDOR_ALIAS: Record<string, string> = {
  * **最具体信号优先**：有产品级命中时只保留它们，否则退回厂商/名称匹配。这条不是风格问题，是真目录实测出来的两件事：
  * 三字段 OR 时"微软 Office + 2026"命中 42 条、截 12 后 21509 与 21514 双双被挤掉；而目录里 CVE-2026-42897 的
  * product 与 vendorProject 都写 "Microsoft"，把厂商词当产品词就会让它冒充产品命中、把 5 条变成 6 条。
- * 一个词都没命中时返回空数组——绝不允许"没匹配到就把整个目录塞进上下文"。
+ * 一个词都没命中时返回空结果——绝不允许"没匹配到就把整个目录塞进上下文"。
  */
-export function kevScopeMatches(question: string, entries: Iterable<KevEntry>): KevEntry[] {
+export function kevScopeMatches(question: string, entries: Iterable<KevEntry>): KevScopeResult {
+  const none: KevScopeResult = { entries: [], scope: null, totalMatched: 0 };
   const raw = String(question ?? "");
   const ascii = (raw.match(/[A-Za-z][A-Za-z0-9.\-/]{2,24}/g) ?? [])
     .map((s) => s.toLowerCase()).filter((s) => !KEV_STOP_TOKENS.has(s));
   const alias = Object.entries(KEV_VENDOR_ALIAS)
     .filter(([zh, en]) => en && raw.includes(zh)).map(([, en]) => en.toLowerCase());
   const terms = [...new Set([...ascii, ...alias])];
-  if (!terms.length) return [];
+  if (!terms.length) return none;
   const year = (raw.match(/20\d{2}/) ?? [])[0] ?? null;
   const list = [...entries];
   // 厂商词表不另起一张表：目录里 vendorProject 出现过什么，什么就是厂商词（实测 295 个不同取值）。
   const vendorWords = new Set(list.map((e) => String(e.vendorProject ?? "").toLowerCase().trim()));
   const productTerms = terms.filter((t) => !vendorWords.has(t));
-  // 逐条分别记录"产品级命中"与"厂商/名称命中"：产品是更具体的信号，需要按字段分开才知道该不该收窄。
+  // 逐条分别记录三条规则的命中：产品是更具体的信号，需要按字段分开才知道该不该收窄，
+  // 而 scope 要把"厂商命中"与"只有漏洞名命中"区分开给调用方看。
   const hit = list.map((e) => {
     const prod = String(e.product ?? "").toLowerCase();
     const vend = String(e.vendorProject ?? "").toLowerCase();
     const name = String(e.vulnerabilityName ?? "").toLowerCase();
-    return { e, byProduct: productTerms.some((t) => prod.includes(t)), byVendor: terms.some((t) => vend.includes(t) || name.includes(t)) };
-  }).filter((h) => h.byProduct || h.byVendor);
+    return {
+      e,
+      byProduct: productTerms.some((t) => prod.includes(t)),
+      byVendor: terms.some((t) => vend.includes(t)),
+      byName: terms.some((t) => name.includes(t)),
+    };
+  }).filter((h) => h.byProduct || h.byVendor || h.byName);
+  if (!hit.length) return none;
+  // 回落集合保持"厂商或名称命中"的原口径，scope 只负责报告这批人是靠哪条规则进来的。
   const scoped = hit.some((h) => h.byProduct) ? hit.filter((h) => h.byProduct) : hit;
-  return scoped
+  const scope: KevScope = scoped.some((h) => h.byProduct) ? "product"
+    : scoped.some((h) => h.byVendor) ? "vendor" : "name";
+  const kept = scoped
     .map((h) => h.e)
-    .filter((e) => !year || String(e.dateAdded ?? "").startsWith(year))
-    .sort((a, b) => String(b.dateAdded).localeCompare(String(a.dateAdded)))
-    .slice(0, 12);
+    .filter((e) => !year || String(e.dateAdded ?? "").startsWith(year));
+  const totalMatched = kept.length;
+  return {
+    entries: kept.sort((a, b) => String(b.dateAdded).localeCompare(String(a.dateAdded))).slice(0, 12),
+    scope,
+    totalMatched,
+  };
 }
 
 /** 按编号现查：confirmed=目录里有（带日期），absent=目录里确实没有，unavailable=目录没拉到。 */
