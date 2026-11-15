@@ -14,18 +14,23 @@
  * 退出码：0 = 干净；1 = 命中禁止项；2 = 用法/git 不可用。
  */
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const CWD = process.cwd();
 const EXCLUDE_PLANS_DEFAULT = !process.argv.includes("--include-plans");
 const SELFCHECK = process.argv.includes("--selfcheck");
 
 /** 凭据形状。宁可多扫——漏一条的代价是把 key 交给平台。 */
+// 最后一条用 `[_]` 而不是直接写下划线，是**被迫**的：审计会扫每个 blob，包括本脚本自己，
+// 所以任何"看起来像凭据"的字面串——包括注释里写的、正则源码里写的——都会把自己判红。
+// 第一版就是这么翻车的（见下面 selfcheck 里的 SELF-HIT 项）。语义不受影响，仍然匹配同一种串。
 const SECRET_PATTERNS = [
   ["dashscope_sk", /sk-[A-Za-z0-9]{20,}/],
   ["aws_akia", /\bAKIA[0-9A-Z]{16}\b/],
   ["pem_private_key", /-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----/],
   ["jwt_like", /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/],
-  ["service_role", /_service_role/],
+  ["supa_svc_role", /_service[_]role/],
   ["conn_string_pw", /postgres(?:ql)?:\/\/[^\s"'@]*:[^\s"'@]+@/],
 ];
 
@@ -55,13 +60,19 @@ function git(args) {
 
 function selfcheck() {
   // 每条凭据判据都必须至少命中一次自己的样本；命中不到就是这把尺子是空的。
+  //
+  // 样本一律**运行时拼接**，源文件里不留完整的假密钥字面串。原因不是怕别人看到，而是这套判据
+  // 会扫 HEAD 里的每个 blob，**包括这个脚本自己**——第一版直接写字面串，审计脚本把自己判成 6 条
+  // 命中、结论"不要上传"。当时最省事的修法是"跳过自己"，但那正是本项目反复在批评的动作：
+  // 工具给自己开一条例外，规则就再也没扫过它自己。所以改的是样本的写法，判据与适用范围一个字没动。
+  const join = (...parts) => parts.join("");
   const samples = {
-    dashscope_sk: "DASHSCOPE_API_KEY=sk-0123456789abcdefghijklmnopqrstuv",
-    aws_akia: "AWS_KEY=AKIAIOSFODNN7EXAMPLE",
-    pem_private_key: "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaA==\n",
-    jwt_like: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWRtaW4ifQ.abcdefghijklmnopqrstuvwxyz123456",
-    service_role: "SUPABASE_KEY=xxx_service_role_yyy",
-    conn_string_pw: "postgres://user:notapa55word@host:5432/db",
+    dashscope_sk: join("sk-", "0123456789", "abcdefghijklmnopqrstuv"),
+    aws_akia: join("AKIA", "IOSFODNN7EXAMPLE"),
+    pem_private_key: join("-----BEGIN ", "OPENSSH PRIVATE KEY-----", "\nb3BlbnNzaA==\n"),
+    jwt_like: join("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", ".", "eyJyb2xlIjoiYWRtaW4ifQ", ".", "abcdefghijklmnopqrstuvwxyz123456"),
+    supa_svc_role: join("SUPABASE_KEY=xxx_", "service", "_role", "_yyy"),
+    conn_string_pw: join("postgres://", "user:notapa55word@host:5432/db"),
   };
   let bad = 0;
   for (const [name, re] of SECRET_PATTERNS) {
@@ -69,6 +80,10 @@ function selfcheck() {
     if (!hit) { console.log(`MISS  ${name} 抓不到自己的样本`); bad++; }
     else console.log(`ok    ${name}`);
   }
+  // 顺手钉住"本脚本自己不命中"，否则下一次有人把样本改回字面串，又要靠人工发现。
+  const selfBlob = readFileSync(fileURLToPath(import.meta.url), "utf8");
+  const selfHits = SECRET_PATTERNS.filter(([, re]) => re.test(selfBlob)).map(([n]) => n);
+  if (selfHits.length) { console.log(`SELF-HIT  本脚本源码里的字面串命中自己的判据：${selfHits.join(", ")}`); bad++; }
   // 假阳性方向：真实仓库里出现过、但**不是**凭据的串，不该被判红。
   const safe = [
     "sk-开头的占位说明", "https://api.openai.com/v1", "text-embedding-v3",
