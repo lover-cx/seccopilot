@@ -182,6 +182,19 @@ DashScope 兼容模式即使开了搜索，响应里也没有 `search_info`。�
 
 同一批回答里，`on` 模式答出了 CVE-2026-34477~34481 与修复版本 2.25.4，NVD 侧确认为 2026-04-10 发布的同一批——这正是需要联网的那一类题：**不联网时的正确行为是承认本地没这批条目，而不是替现实下结论**。
 
+**11-16 把尺子里剩下的那个日期函数也拆掉了。** 上面那条"本周"的判据当时还是整篇匹配 `2026-0[1-8]-`——它自己就是个日期函数：9 月一到就自动作废，之后模型照实写一条 10 月的收录日期是判合格还是判违规，全看运气。现在改成由核对日推导：`EVAL_DAY`（默认取北京时间今天，重算历史留档时必须显式带上）算出 `WEEK_START`，判据只写 `withinWeek: true`，回答里出现的日期落在窗口外、**且同一句还把它说成"本周"**才判红，限定语例外照旧。KEV 那道题同批改了两件事：
+
+- **"2026 年被 CISA 确认在野利用的微软 Office 漏洞"有两个都成立的口径**，得先选一个再写判据。按 KEV `dateAdded` 落在 2026 是 5 条（含 2009-0556、2009-0238 两条老编号，收录日分别是 2026-01-07、2026-04-14）；按 CVE 编号年份是 2026 只有 3 条。题面问的是"被 CISA 确认"，"确认"这个动作对应 `dateAdded`，所以判据按 5 条并集写；文档里凡是写"3 条"的地方必须同处写明那是编号年份口径，否则同一份材料里的两个数会被读成自相矛盾。
+- **并集从 1 个编号扩到 5 个，"编号对、类型安错人"的盲区跟着变大**，所以漏洞类型不再全篇独立匹配，改成 `titleFor` 按编号就近配对：提到某个编号的那句话里给了类型，就必须给对人；只报编号不给类型算回答不完整，但不判红——判红的是张冠李戴，不是省略。放宽和加严必须写进同一次提交，否则就是第二次"把尺子锯短"。
+
+改完的量法也留成命令，不然下次没人知道基准是从哪天算的：`node scripts/refresh-time-grounds.mjs`（`PROXY=1` 走本机 Clash）拉当天 KEV 目录、逐条核 NVD，留档到 `docs/eval-archive/time-grounds-2026-11-16.json`，再把它**从 `eval.mjs` 源码里读回来的基准编号集合**和当天目录做交集比对——不一致就非 0 退出，因为"脚本自己抄一份编号"迟早会和判据漂移。判分器自检 `node scripts/eval.mjs --selfcheck` 现在是 12 条合成样本、其中 5 条"必须判红"（张冠李戴、窗口外日期说成本周、答别的产品编号都在内），实测 12/12、退出码 0、零网络。两处新判据各自做过变异反证：从合取式里拿掉 `pairOk` 立刻 2 条样本红（"编号对但类型挂错"与"类型安错了编号"），拿掉 `weekBad` 立刻 1 条红（"窗口外日期说成本周"），改回 12/12。
+
+尺子变更对历史留档的影响单独用 `node scripts/eval.mjs --check-title <留档.json> …` 量，11-16 实跑对 10 行核到 **2 行从"未通过"翻成"通过"**，翻的两行是只提 CVE-2026-124194 的回答——并集变宽的直接后果，写在这里而不是挑好看的那遍。而"同一套判分代码打两份留档"的对照表是另一件事，这次量到 **1 行翻转**：`off` 模式问 Log4j，线上那版答"目前无 2026 年新披露的 Apache Log4j 相关 CVE"（对现实下全局否定，判红），闸门版答"本地知识库未覆盖 2026 年的该主题，无法确认，需开启联网检索才能确认"（承认缺口，判绿）——两份回答原文都从留档里取出来对过，所以这行翻的是被测版本，不是尺子。
+
+这一段里还有三处是我们自己写坏的，一并记下来。① 用 `--rescore` 做对照时报告默认写 `docs/eval-report.md`，我把留档指到 `dev/` 的副本、又只跑 `--only=on`，结果把那份双模式的本地报告覆盖成了单模式输出——文件已按 HEAD 恢复，并给脚本加了硬闸：`--rescore` 的 `EVAL_JSON` 不是默认留档时不带 `EVAL_OUT=` 就退出 2。② 对照表原来只在"本次"那一侧重算时效题判据，基线那一侧沿用留档当时写下的布尔值，于是报告里"两张表由同一份判分代码打分"这句话在尺子一改之后就是假的；现在基线侧同样用当前尺子重打，尺子改判了多少由 `--check-title` 报，两件事不再混成一栏。③ `--check-title` 传目录通配符时撞上基准留档（`time-grounds-*.json` 没有 `rows` 数组）直接抛 `TypeError`，看起来像核对失败，其实是把非评测留档当评测留档读——现在跳过并说明，一行没核到仍然以退出码 1 报出来，别把空集当通过。
+
+**边界要说清**：这批数字是 2026-11-16 核对的基准。评测当天（11-18 之后）必须带当天的 `EVAL_DAY=` 重跑一次刷新并重新留档，不能拿这一天的 5 条/3 条说成评测日的事实——KEV 目录每周都在动，本次刷新当天就量到最近 7 天（2026-11-09 ~ 2026-11-16）新增 8 条。
+
 ### 那些"可疑编号"到底是不是幻觉？三批回答逐条拿去权威源验了
 
 自动判据只能看来源标题和 URL，编号若出现在搜索正文片段里而标题没带，就会被标成可疑。这是保守告警，不是结论，所以我们把线上版那一轮 42 次回答里出现的 26 个可疑编号（off 1 个 + on 25 个，去重）逐条核了一遍——脚本留在 `scripts/verify-suspects.mjs`，别人换一批题也能重跑（`EVAL_JSON=` 指定留档）：
@@ -258,6 +271,8 @@ DashScope 兼容模式即使开了搜索，响应里也没有 `search_info`。�
 
 **还要说清楚这条判据没做过的事。** 它是**预防性收紧，不是修某个已测到的缺陷**：`dev/check-title-criterion.mjs` 把四份留档（线上版、闸门版两遍、当前 `docs/eval-report.json`）里那道题的 8 行逐行重算，旧口径=提到编号、新口径=编号且类型对得上，结果是 **0 行判定翻转**（脚本退出码非 0 就代表翻转过）。更要紧的是我自己在写这条判据时留下的一处错：代码注释里一度写着"线上留档里出现过把 CVE-2026-21509 写成 Azure Portal 前端 CSRF 的回答"——对全部留档 grep `CSRF|跨站请求伪造` 是 **0 命中**，那句话是我把**来源标题当成回答内容**读出来的，注释已按实测改掉。这是 11-12 那天第二次把"没落档的说法"当成结论（第一次是"`off` 4 次里 1 次过度推脱"那句，同样已撤回），而同一条毛病我们在正文里批评了模型三回。
 
+（这段是 11-12 当时的尺子和当时的读数，不追改。基准在 11-16 又刷新过一次：KEV 判据的编号并集从 1 个扩到 5 个、类型改成按编号就近配对的 `titleFor`，"本周"那道把写死的 `2026-0[1-8]-` 换成由 `EVAL_DAY` 推导的窗口；核对命令也收进了主脚本，`node scripts/eval.mjs --check-title <留档.json>` 直接从判据源码读尺子，不再抄一份会漂移的副本。同一把新尺子对 10 行历史留档量到 2 行翻转，读数与后果见第六节末。）
+
 ## 七、Qoder 在这个项目里干了什么
 
 赛题要求写清"哪几步交给它、你改了什么"，我们按实际分工列。
@@ -267,7 +282,7 @@ DashScope 兼容模式即使开了搜索，响应里也没有 `search_info`。�
 1. **知识库采集与入库**：NVD 高危 CVE、CISA KEV、MITRE ATT&CK、CWE、arXiv 五个来源的抓取脚本与去重合并，870 条起步一路做到 5,397 条，`data/` 下每个来源都有对应脚本可重跑。
 2. **Supabase / pgvector 检索层**：建表 SQL、`match_documents` 等 RPC、中文问短编号（`T1059`、`CWE-79`、`CVE-2021-44228`）时向量不可靠 → 改成编号精确锚点补齐这条方案，是它先在实测里发现问题再提出的。
 3. **边缘函数与三层来源编排**：Function 分层重构（`lib/kb.ts` 只管取数、`lib/chat.ts` 只管编排）、三道回答闸门、联网开关的响应契约。
-4. **回归测试与评测 harness**：34 项用例、21 题对照评测、判分器自检（`--selfcheck` 里 3 条必须判红的合成样本）、可疑编号逐条回权威源的核验脚本。
+4. **回归测试与评测 harness**：39 项用例、21 题对照评测、判分器自检（`--selfcheck` 里 12 条合成样本、5 条"必须判红"）、时效题基准刷新与对表（`scripts/refresh-time-grounds.mjs` + `--check-title`）、可疑编号逐条回权威源的核验脚本。用例数与自检样本数都会随任务变，引用前以命令自己的输出为准。
 5. **部署与文档**：Qoder Sites 的准备、Secrets 绑定、发布通道排查（`verify_artifact` 队列超时那一串），以及这份作品帖和 README、缺陷台账的同步。
 
 **人做的判断与修正**（这些不是 Qoder 自觉做到的）：
@@ -315,9 +330,9 @@ npm run build && npm run dev       # 前端
 NODE_USE_ENV_PROXY=1 HTTP_PROXY=http://127.0.0.1:7897 HTTPS_PROXY=http://127.0.0.1:7897 \
   NO_PROXY=dashscope.aliyuncs.com,nvd.nist.gov,services.nvd.nist.gov npm run dev:function:node
 
-SITE=http://127.0.0.1:8000 npm test                       # 全量回归打在仓库当前源码上（当前 33 项）
+SITE=http://127.0.0.1:8000 npm test                       # 全量回归打在仓库当前源码上（用例数以 npm test 尾部计数为准，11-16 是 39 项）
 SITE=http://127.0.0.1:8000 EVAL_JSON=dev/eval-local.json node scripts/eval.mjs   # 21 题 off/on 对照
-SKIP_LLM=1 npm test                                       # 只跑 14 项纯逻辑用例、零模型费用
+SKIP_LLM=1 npm test                                       # 跳过要打模型的用例，零模型费用（11-16：39 项 / 20 pass / 0 fail / 19 skipped）
 node scripts/verify-suspects.mjs                          # 可疑编号逐条拿去 NVD / MITRE 验真
 node scripts/verify-id-name-pairs.mjs                     # 编号↔名称配对核验（同篇自相矛盾直接抓出）
 
@@ -325,15 +340,17 @@ node scripts/verify-id-name-pairs.mjs                     # 编号↔名称配�
 node dev/probe-kev-on-batch.mjs 10 on                     # KEV 那道题连采 N 次：编号/收录日期/网络来源条数逐次留档
 node dev/probe-websearch-shape.mjs                        # 直接打 DashScope 原生协议，看 usage.plugins 与 search_info
 
-# 判分器本身的两条核验（都不打模型）
-node scripts/eval.mjs --selfcheck                         # 7 条合成样本，含 3 个"必须判红"的方向
-node dev/check-title-criterion.mjs                        # 新增的 title 判据重算四份留档：报告判定翻转行数（应为 0）
+# 判分器本身的三条核验（都不打模型）
+node scripts/eval.mjs --selfcheck                         # 12 条合成样本，含 5 个"必须判红"的方向
+node scripts/eval.mjs --check-title docs/eval-archive/deployed-prompt-only-2026-11-12.json docs/eval-report.json
+                                                          # 用当前尺子重算历史留档那道 KEV 题，报与留档当时判定不一致的行数
+PROXY=1 node scripts/refresh-time-grounds.mjs             # 时效题基准刷新：拉当天 KEV 目录 + 逐条 NVD，留档并与判据对表
 
 # 作品帖里 KEV 那三句（10 次都列出并给日期 / 网络来源 10 次全 0 / 12 次采样 2 次不照闸门说）的复算方式
 node dev/check-kev-samples.mjs                            # 读已有留档正文重数，不发请求
 ```
 
-不带 `SITE=` 时，`npm test` 与 `eval.mjs` 默认打线上站点 `https://seccopilot-kpa8w0w9u7e.qoder.zone`；`EVAL_JSON=` 决定读/写哪一份留档，`BASELINE_JSON=` 让报告附一节"同一判分代码打两份留档"的对照。
+不带 `SITE=` 时，`npm test` 与 `eval.mjs` 默认打线上站点 `https://seccopilot-kpa8w0w9u7e.qoder.zone`；`EVAL_JSON=` 决定读/写哪一份留档，`BASELINE_JSON=` 让报告附一节"同一判分代码打两份留档"的对照。时效题的日期锚点是 `EVAL_DAY=YYYY-MM-DD`（不写就取北京时间今天，"本周"窗口由它往前推 7 天）——重算历史留档必须显式带上回答那天的日期，否则窗口跟着今天走，对照就不是同一口径。`--rescore` 只重算判据、一条模型都不打，它写报告仍走 `EVAL_OUT=`：留档指到 `dev/` 的副本而不给 `EVAL_OUT=` 时脚本直接退出 2，这是 11-16 覆盖掉一次本地报告之后加的闸。
 
 两点如实说明：① 关于"本地能不能测检索链路"，我们之前写的是"本机直连 Supabase 不通，只能发布后打线上"——这句到 11-12 为止是错的：Supabase 直连确实不通（`ECONNRESET`），但 Node 24 的全局 fetch 默认不认代理变量，加上 `NODE_USE_ENV_PROXY=1` 再指到 Clash 就通了，DashScope 与 NVD 反过来要用 `NO_PROXY` 绕开代理。所以上面这套本地命令量到的是真实检索 + 真实模型，不是 mock。② 密钥只在 Supabase SQL Editor 与 Qoder Sites Settings 里由本人填写，脚本统一从 `data/.env` 读取，代码库中不含任何明文密钥（仓库公开前请先轮换 DashScope key）。数据库结构见 `supabase-schema.sql`，检索召回修复见 `supabase-retrieval-fix.sql`。
 

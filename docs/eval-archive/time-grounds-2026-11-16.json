@@ -1,0 +1,143 @@
+{
+ "checkedAt": "2026-11-16T08:05:12.596Z",
+ "evalDay": "2026-11-16",
+ "nvd": [
+  {
+   "id": "CVE-2026-21509",
+   "exists": true,
+   "httpStatus": 200,
+   "published": "2026-01-26",
+   "kevAdd": "2026-01-26",
+   "kevDue": "2026-02-16",
+   "title": "Reliance on untrusted inputs in a security decision in Microsoft Office allows an unauthorized attacker to bypass a security feature locally.",
+   "retried": true
+  },
+  {
+   "id": "CVE-2026-21514",
+   "exists": true,
+   "httpStatus": 200,
+   "published": "2026-02-10",
+   "kevAdd": "2026-02-10",
+   "kevDue": "2026-03-03",
+   "title": "Reliance on untrusted inputs in a security decision in Microsoft Office Word allows an unauthorized attacker to bypass a security feature locally."
+  },
+  {
+   "id": "CVE-2026-124194",
+   "exists": true,
+   "httpStatus": 200,
+   "published": "2026-11-10",
+   "kevAdd": "2026-11-10",
+   "kevDue": "2026-11-24",
+   "title": "Product ui does not warn user of unsafe actions in Microsoft Office Outlook allows an unauthorized attacker to perform spoofing over a network."
+  },
+  {
+   "id": "CVE-2026-34477",
+   "exists": true,
+   "httpStatus": 200,
+   "published": "2026-04-10",
+   "kevAdd": null,
+   "kevDue": null,
+   "title": "The fix for  CVE-2025-68161 https://logging.apache.org/security.html#CVE-2025-68161  was incomplete: it addressed hostname verification only when enabled via th"
+  },
+  {
+   "id": "CVE-2026-34486",
+   "exists": true,
+   "httpStatus": 200,
+   "published": "2026-04-09",
+   "kevAdd": "2026-08-04",
+   "kevDue": "2026-08-07",
+   "title": "Missing Encryption of Sensitive Data vulnerability in Apache Tomcat due to the fix for CVE-2026-29146 allowing the bypass of the EncryptInterceptor.\n\nThis issue",
+   "retried": true
+  },
+  {
+   "id": "CVE-2026-49844",
+   "exists": true,
+   "httpStatus": 200,
+   "published": "2026-07-10",
+   "kevAdd": null,
+   "kevDue": null,
+   "title": "Improper encoding of non-finite floating-point values during MapMessage JSON serialization in Apache Log4j API produces output that is not valid JSON. This issu"
+  }
+ ],
+ "kev": {
+  "catalogVersion": "2026.11.13",
+  "dateReleased": "2026-11-13T20:24:18.3008Z",
+  "count": 1781,
+  "officeByDateAdded2026": [
+   {
+    "cveID": "CVE-2009-0556",
+    "dateAdded": "2026-01-07",
+    "dueDate": "2026-01-28",
+    "product": "Office",
+    "name": "Microsoft Office PowerPoint Code Injection Vulnerability"
+   },
+   {
+    "cveID": "CVE-2026-21509",
+    "dateAdded": "2026-01-26",
+    "dueDate": "2026-02-16",
+    "product": "Office",
+    "name": "Microsoft Office Security Feature Bypass Vulnerability"
+   },
+   {
+    "cveID": "CVE-2026-21514",
+    "dateAdded": "2026-02-10",
+    "dueDate": "2026-03-03",
+    "product": "Office",
+    "name": "Microsoft Office Word Reliance on Untrusted Inputs in a Security Decision Vulnerability"
+   },
+   {
+    "cveID": "CVE-2009-0238",
+    "dateAdded": "2026-04-14",
+    "dueDate": "2026-04-28",
+    "product": "Office",
+    "name": "Microsoft Office Remote Code Execution"
+   },
+   {
+    "cveID": "CVE-2026-124194",
+    "dateAdded": "2026-11-10",
+    "dueDate": "2026-11-24",
+    "product": "Office",
+    "name": "Microsoft Office Outlook Missing User Interaction for Potentially Unsafe Action Vulnerability"
+   }
+  ],
+  "officeByCveYear2026": [
+   {
+    "cveID": "CVE-2026-124194",
+    "dateAdded": "2026-11-10",
+    "dueDate": "2026-11-24",
+    "product": "Office",
+    "name": "Microsoft Office Outlook Missing User Interaction for Potentially Unsafe Action Vulnerability"
+   },
+   {
+    "cveID": "CVE-2026-21509",
+    "dateAdded": "2026-01-26",
+    "dueDate": "2026-02-16",
+    "product": "Office",
+    "name": "Microsoft Office Security Feature Bypass Vulnerability"
+   },
+   {
+    "cveID": "CVE-2026-21514",
+    "dateAdded": "2026-02-10",
+    "dueDate": "2026-03-03",
+    "product": "Office",
+    "name": "Microsoft Office Word Reliance on Untrusted Inputs in a Security Decision Vulnerability"
+   }
+  ],
+  "weekWindow": {
+   "from": "2026-11-09",
+   "to": "2026-11-16",
+   "count": 8,
+   "ids": [
+    "CVE-2026-114713",
+    "CVE-2026-123039",
+    "CVE-2026-124194",
+    "CVE-2026-111793",
+    "CVE-2026-20320",
+    "CVE-2026-111560",
+    "CVE-2026-116606",
+    "CVE-2026-125350"
+   ]
+  }
+ },
+ "changes": []
+}
