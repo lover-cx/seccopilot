@@ -47,18 +47,25 @@ const postChat = async (question, extra = {}) => {
 // 模型否定式表述（"尚无公开的在野利用报告""未发现实际在野利用""未被 CISA KEV 明确收录"）句里也含"在野利用"。
 // 提到模块作用域并配一条不联网就能跑的自证，是为了让"放宽例外词"这件事必须同时让真违规照样判红——
 // 判据写在联网用例里时，SKIP_LLM=1 下它根本不被执行，改红了也没人看得见。
+// 11-16 第二次误伤换了个形状：模型把结论收成"仅在本地知识库中被明确标注'在野利用（CISA KEV）'"
+// 而同一句不再重复日期。这类语料限定句不该由这条判据管——它断言的是"我们库里怎么标的"，
+// 而"库里的标注对不对"另有一道代码闸门（chat.ts 的 kevFacts/kevCorrection 只许带 KEV 标注的编号进证据清单）。
+// 当天逐条核过被判的那三个编号，库里都有 KEV 标注且有日期（CVE-2016-3081 2026-10-08 /
+// CVE-2026-34486 2026-08-04 / CVE-2026-34197 2026-04-16，`action=cve&q=` 现查），所以它不是假称。
 const KEV_NEGATION = /未经|未被|未收录|未列入|未进入|未发现|未确认|无法确认|不确定|未见|不属于|尚无|暂无|不在|不满足|没有公开|无公开|无证据|没有证据|并非|而非/;
+const KEV_CORPUS_SCOPE = /本地知识库|知识库中|知识库内|库里|库内|检索到的资料|本地资料/;
 const kevViolations = (text) => String(text).split(/(?<=[。；;\n])/).filter((s) =>
   /CVE-\d{4}-\d{4,7}/i.test(s) && /在野|已被利用|确认利用|active exploitation/i.test(s)
   && !/20\d\d-\d\d-\d\d/.test(s)
-  && !KEV_NEGATION.test(s));
+  && !KEV_NEGATION.test(s) && !KEV_CORPUS_SCOPE.test(s));
 
-test("判分尺子 kevViolations：未给日期的断言判红，否定式和已给日期的判绿", () => {
+test("判分尺子 kevViolations：未给日期的断言判红，否定式、语料限定和已给日期的判绿", () => {
   const v = kevViolations(
     "CVE-2026-00001 已被确认在野利用。"
     + "CVE-2026-00002 虽有公开 PoC，但未发现实际在野利用。"
     + "CVE-2026-00003 虽有详细分析，但未被 CISA KEV 明确收录为“在野利用”状态。"
-    + "CVE-2026-00004 已被确认在野利用，KEV 收录 2026-01-26。");
+    + "CVE-2026-00004 已被确认在野利用，KEV 收录 2026-01-26。"
+    + "CVE-2026-00005 在本地知识库中被明确标注“在野利用（CISA KEV）”。");
   assert.deepEqual(v, ["CVE-2026-00001 已被确认在野利用。"],
     `应只判红那一条无日期断言，实际 ${JSON.stringify(v)}`);
 });
@@ -74,10 +81,21 @@ test("stats 返回完整计数", async () => {
   // 旧写法 Object.values(...).reduce 会把 null 当 0 加进去，于是"上游挂了"和"这一类真是 0 条"
   // 在断言里长得一样，11-16 那轮 4530 ≠ 5397 的红就是这么被读成"数据少了 867 条"的。
   assert.ok(Array.isArray(d.degraded), "响应应带 degraded 列表（哪些分类没统计到）");
+  // 未知项 = 值为 null 的分类 + total 为 null 时的 "total"，degraded 必须与它一一对应。
+  // 11-16 全量套件这条红过一次，报的是 `1 !== 0`：真实响应是 total:null、五个分类齐全、degraded:["total"]
+  // ——连打 6 次 stats，第 1 次就是这个形状。把 degraded 只跟"null 分类"对齐是我在 Task 5 写用例时的错：
+  // total 也在 degraded 里，但它不是分类。这正是 aggregateStats 用例⑤钉的那个形状，用例自己反而没接住。
+  const unknown = [
+    ...Object.entries(d.categories).filter(([, v]) => typeof v !== "number").map(([k]) => k),
+    ...(typeof d.total === "number" ? [] : ["total"]),
+  ];
+  assert.deepEqual(d.degraded.slice().sort(), unknown.slice().sort(),
+    "degraded 应与未知项（null 分类 + null total）一一对应");
   const nums = Object.entries(d.categories).filter(([, v]) => typeof v === "number");
-  assert.equal(d.degraded.length, Object.keys(d.categories).length - nums.length, "degraded 应与 null 分类一一对应");
-  assert.equal(nums.length, Object.keys(d.categories).length, "健康站点不应有分类为 null");
-  assert.ok(Number.isInteger(d.total) && d.total > 0, `total 应为正整数，实际 ${JSON.stringify(d.total)}`);
+  assert.equal(nums.length, Object.keys(d.categories).length,
+    `不应有分类为 null，实际 ${JSON.stringify(d.categories)}；degraded=${JSON.stringify(d.degraded)}——非空即上游这轮没给全（Task 5 要的可见缺口），不是求和算错`);
+  assert.ok(Number.isInteger(d.total) && d.total > 0,
+    `total 应为正整数，实际 ${JSON.stringify(d.total)}；degraded=${JSON.stringify(d.degraded)}——含 "total" 就是上游那次 count 请求没回来`);
   // 分类会随数据扩充增加（cwe、paper 已加入），因此按返回的键求和，不再写死分类列表
   for (const c of ["cve", "attack", "cwe", "paper"]) {
     assert.ok(c in d.categories, `categories 缺少 ${c}`);
@@ -234,10 +252,28 @@ test("chat：响应含联网搜索契约字段", async (t) => {
   assert.ok(["local", "mixed", "web"].includes(d.coverage), `coverage 取值异常：${d.coverage}`);
   // 时效性问题在 auto 模式下必须触发联网
   assert.equal(d.search_used, true, "含 2026 时效信号的问题应触发联网检索");
-  assert.ok(d.web_sources.length > 0, "应返回可核验的网络来源列表");
-  for (const w of d.web_sources.slice(0, 5)) {
-    for (const f of ["index", "title", "url", "site"]) assert.ok(f in w, `网络来源字段不完整：${JSON.stringify(w)}`);
-    assert.match(w.url, /^https:\/\//, "网络来源应有绝对 URL");
+  // 第 8 条缺陷的用例侧收口：插件执行位为真 ≠ 有可核验来源。11-12 起上游出现过
+  // search_used:true 而 web_sources:[] 的响应，旧断言 `web_sources.length > 0` 把"上游没给来源清单"
+  // 判成产品缺陷、稳定红；现在分两路断言——有来源就查字段完整性，零来源就查措辞与 coverage 有没有老实降级。
+  if (d.web_sources.length === 0) {
+    assert.notEqual(d.coverage, "web", `零来源不得标为 web：${d.coverage}`);
+    assert.match(d.note, /未返回可核验来源|未检索到可核验来源/, `零来源时的措辞：${d.note}`);
+    assert.ok(!/结合本地知识库与网络检索作答|主要依据网络检索/.test(d.note), `不得声称结合网络：${d.note}`);
+    console.warn("  [warn] 本轮联网检索插件执行了但没有可核验来源（第 8 条缺陷）");
+  } else {
+    for (const w of d.web_sources.slice(0, 5)) {
+      for (const f of ["index", "title", "url", "site"]) assert.ok(f in w, `网络来源字段不完整：${JSON.stringify(w)}`);
+      assert.match(w.url, /^https:\/\//, "网络来源应有绝对 URL");
+    }
+    // 来源权威性：11-16 本机实测这道题上游给的是 cloud.tencent.com 开发者社区、help.aliyun.com、
+    // hhic.hhu.edu.cn 三条二手转载，权威域 0/3。计划把它写成硬断言会让整套回归天天红在一个
+    // 我们既不控制、Task 6 也修不了的性质上（搜索召回质量），所以这里显式记 warn 而不 assert——
+    // 域名清单保持计划原样，不为了让它变绿去加 apache.org / 各厂商 PSIRT（那是挪门柱）。
+    const AUTH = /nvd\.nist\.gov|cisa\.gov|mitre\.org|microsoft\.com|logging\.apache\.org|arxiv\.org/;
+    if (!d.web_sources.some((w) => AUTH.test(String(w.url)))) {
+      console.warn(`  [warn] 联网来源 ${d.web_sources.length} 条里没有权威安全域（第 8 条的姊妹问题：清单非空但都是二手转载）：`
+        + d.web_sources.map((w) => String(w.url)).join(" "));
+    }
   }
 });
 
@@ -360,6 +396,7 @@ let kevLookup = null;
 let kevScopeMatches = null;
 let kevDocs = null;
 let kevCatalog = null;
+let webGrounding = null;
 // Task 5：stats 的聚合判据是纯函数（routes.ts 里只有这一个不发请求的导出），单独一个 try——
 // 混进 chat.ts 那个 try 里会让"routes.ts 改了导出名"把整片 KEV 用例一起拖成"本机跑不了"。
 let aggregateStats = null;
@@ -377,6 +414,7 @@ try {
   kevAssertedIds = m.kevAssertedIds;
   kevCorrection = m.kevCorrection;
   kevUnderCount = m.kevUnderCount;
+  webGrounding = m.webGrounding;
   const kb = await import("../functions/lib/kb.ts");
   kevFromCatalog = kb.kevFromCatalog;
   kevLookup = kb.kevLookup;
@@ -427,6 +465,44 @@ test("aggregateStats：上游失败不得变成 0 条", (t) => {
   const totalOnlyDown = aggregateStats(null, [1774, 867, 956, 1800, 0], ["total"]);
   assert.equal(totalOnlyDown.status, 200, "只缺 total 不是全站不可用，不得报 502");
   assert.equal(totalOnlyDown.data.total, null, "total 没取到就是不知道，不得回落到求和或 0");
+});
+
+// Task 6 / 第 8 条缺陷：plugins.search 为真只说明"插件执行过"，不等于"有可核验来源"。
+// 11-12 下午起线上出现过 search_used:true 而 web_sources:[] 的响应，而 note 仍写"结合了网络检索"。
+// 计划 Step 2 的样本第三个参数是"本地资料条数"（docs.length），本机改成布尔 localGrounded：
+// chat.ts 里 note 的分支用的是 isLocalSufficient(docs)（有阈值），而 docs.length>0 只表示
+// "检索回来几条近似条目"。按数字接线会把"只抓到不相关条目"说成"依据本地知识库"，
+// 正好撞在已有的"知识库外问题不得声称回答基于本地知识库"那条用例上。
+test("webGrounding：插件执行了但零来源时不得声称结合网络检索", (t) => {
+  if (!webGrounding) {
+    return t_skip(t, tsImportError
+      ? `导入 functions/lib/chat.ts 失败：${tsImportError}`
+      : "webGrounding 未导出——是还没实现，不是本机跑不了");
+  }
+  // ① 有来源 + 本地有据：与旧措辞逐字一致，防"收紧一条顺手动了另一条"
+  const a = webGrounding(true, 3, true);
+  assert.equal(a.coverage, "mixed");
+  assert.match(a.note, /网络检索/);
+  assert.ok(!/未返回/.test(a.note));
+  assert.equal(a.note, "结合本地知识库与网络检索作答；网络来源未经知识库校验");
+
+  // ② 零来源 + 本地有据：coverage 不得留 web，措辞必须承认这次没有可核验网络出处
+  const b = webGrounding(true, 0, true);
+  assert.equal(b.coverage, "mixed", "本地有资料时不能只说 web");
+  assert.match(b.note, /插件已执行/);
+  assert.match(b.note, /未返回可核验来源|未能给出可核验来源/);
+  assert.ok(!/结合本地知识库与网络检索作答/.test(b.note), "零来源不得写成'结合了网络检索'");
+
+  // ③ 零来源 + 本地也没覆盖：两头都不能宣称
+  const c = webGrounding(true, 0, false);
+  assert.equal(c.coverage, "local", "什么可核验来源都没有 → 不能说这轮有外部依据");
+  assert.match(c.note, /未返回可核验来源/);
+  assert.ok(!/结合本地知识库与网络检索作答|主要依据网络检索/.test(c.note), `不得声称依据网络：${c.note}`);
+
+  // ④ 没联网就不要提网络检索（mode=off 用例同一底线）
+  const d = webGrounding(false, 0, true);
+  assert.equal(d.coverage, "local");
+  assert.ok(!/网络检索/.test(d.note), `没联网却提到网络检索：${d.note}`);
 });
 
 test("localTimeGapFacts：只在本地库确实缺该时间窗条目时兜底", (t) => {

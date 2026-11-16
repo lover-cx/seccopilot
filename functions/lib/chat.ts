@@ -445,6 +445,39 @@ export function kevUnderCount(
     + `前者是对目录全集的断言，本次查询不支持它。`;
 }
 
+/**
+ * 联网"插件执行过"与"有可核验来源"不是同一件事——作品帖第 8 条缺陷的用例侧收口。
+ * DashScope 从 11-12 下午起出现过 usage.plugins.search 为真、search_info.search_results 为空数组的响应；
+ * 老代码只看 searchUsed 就写"结合本地知识库与网络检索作答"，屏幕上那句话底下一条网络来源都点不出来。
+ *
+ * 第三个参数接的是 isLocalSufficient(docs) 而不是 docs.length：两者不等价——检索回来几条话题相近但不达标的
+ * 资料时 docs.length 为真、sufficient 为假，按条数接线会把"本地没答上"说成"依据本地知识库"，
+ * 正好撞上既有用例"知识库外问题不得声称回答基于本地知识库"。（计划 Step 2 的样本写的是条数，此处按语义改布尔。）
+ */
+export function webGrounding(searchUsed: boolean, webCount: number, localGrounded: boolean):
+  { coverage: ChatPayload["coverage"]; note: string } {
+  if (!searchUsed) {
+    return {
+      coverage: "local",
+      note: localGrounded ? "回答基于本地知识库"
+        : "本地知识库未有效覆盖本题，且当前模式不联网；下列来源仅为近似条目，请勿当作权威结论",
+    };
+  }
+  if (webCount === 0) {
+    return {
+      coverage: localGrounded ? "mixed" : "local",
+      note: localGrounded
+        ? "网络检索插件已执行但本次未返回可核验来源，回答依据的是本地知识库条目"
+        : "网络检索插件已执行但本次未返回可核验来源，本地知识库也未有效覆盖本题，本轮无可点击的可靠出处",
+    };
+  }
+  return {
+    coverage: localGrounded ? "mixed" : "web",
+    note: localGrounded ? "结合本地知识库与网络检索作答；网络来源未经知识库校验"
+      : "本地知识库未有效覆盖本题，回答主要依据网络检索",
+  };
+}
+
 export async function runChat(b: Backend, dashKey: string, rawQuestion: string, category: string | null, mode: Mode): Promise<ChatOutcome> {
   const question = rawQuestion;
 
@@ -555,10 +588,10 @@ export async function runChat(b: Backend, dashKey: string, rawQuestion: string, 
   }
 
   const searchUsed = gen.searchUsed;
-  const coverage: ChatPayload["coverage"] = !searchUsed ? "local" : docs.length ? "mixed" : "web";
-  const note = searchUsed
-    ? (sufficient ? "结合本地知识库与网络检索作答；网络来源未经知识库校验" : "本地知识库未有效覆盖本题，回答主要依据网络检索")
-    : (sufficient ? "回答基于本地知识库" : "本地知识库未有效覆盖本题，且当前模式不联网；下列来源仅为近似条目，请勿当作权威结论");
+  // Task 6：coverage/note 一律走 webGrounding，判据是"有没有可核验的网络来源"而不是"插件跑没跑"
+  const grounding = webGrounding(searchUsed, gen.web.length, sufficient);
+  const coverage = grounding.coverage;
+  const note = grounding.note;
   // 核验状态写进 note，不写进正文：正文已经有【代码更正】/【代码核验的 KEV 事实】这类带来源的段落，
   // note 只负责告诉前端"这一轮的在野利用断言有没有被代码核验过"，两条各说一件事。
   // "clean"/"skipped" 一律空串——硬校验不能变成给所有回答加段落（回归用例④钉的就是这条）。
