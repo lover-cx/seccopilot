@@ -105,8 +105,10 @@
 3. **补作品帖里只有你能填的两处**：自我介绍（学校/专业/年级 + 1–3 人分工）与**所用的 Qoder 账号**——后者是赛题页"提交合格"三判据之一，缺了就不合格。顺带确认报名、组队、天池实名认证与阿里云大学生认证都已完成。
 4. **在赛题页 532536 的论坛发作品帖**（份数不限、取最高分那份，所以现在就可以发一版；11-19 发布并复测后再发更新版）。视频不是赛题必需项，做与不做取决于你要不要那条"社交传播奖"。
 5. 若要公开仓库：**先轮换那把 DashScope key**。【11-16：仓库已公开，key 尚未轮换——按附 B 末尾那五步补做，顺序不能反】
-   > 撤回一句旧写法：这里原先写"历史上那把 key 已经泄露在旧提交内容里过"。实测不成立——
-   > `git log --all -G'sk-[A-Za-z0-9]{20,}'` 0 命中，HEAD 全树 0 命中（仓库 11-12 才建，硬编码版本早于 git）。
+   > 撤回一句旧写法：这里原先写"历史上那把 key 已经泄露在旧提交内容里过"。当时按"`git log --all -G'sk-[A-Za-z0-9]{20,}'` 0 命中"
+   > 判定它不成立——**这条测量本身在 11-16 被撤回**：rebase 后的新链上该命令实测 2 命中，命中的是审计脚本自己的
+   > 合成样本（`1b0b07c` 字面串版，`c9354e1` 起改运行时拼接），不是真 key；树口径仍然是 0 命中。
+   > 所以"真 key 从未进过提交"成立，"历史扫描 0 命中"不成立，两个口径的区别与后果见附 B。
    > 轮换仍然建议，理由是本地明文存着且进过其他会话，但**它不是提交前的拦路项**。
    同时决定 `docs/superpowers/` 这几份计划与账本是否随仓库发布。
 
@@ -260,4 +262,5 @@ npm run submit:audit
 - **顺手抓到两处会被照抄的错**（都在作品帖"附：30 秒复现"）：① `cp data/.env.example data/.env` 的注释写 `SUPABASE_URL / SUPABASE_KEY`，真实契约是 `APP_SUPABASE_URL / APP_SUPABASE_ANON_KEY / DASHSCOPE_API_KEY`（`SUPABASE_` 前缀是平台保留名，`README.md:41`），照抄必挂；② 那条 `SKIP_LLM=1 npm test` 在 cmd.exe 里静默不执行（第 0b 节记过的那类事故），已换成 `npm run test:offline`，并把免依赖复现路径写进 README 与作品帖。
 - **免依赖复现已核到 import 层**：`package.json:17-21` 的 `test:offline` / `submit:*` 全是 `node scripts/...`，不调任何 npm 安装的 bin；`scripts/run-offline-tests.mjs` 只 import `node:child_process`，`scripts/regression.test.mjs` 只 import `node:test` + `node:assert/strict`。
 - **仓库内容实测**：远端 `data/` 只有 `.env.example`、`SETUP.md`、`requirements.txt` 与 `.py`，**无 `.env`**；`docs/superpowers/{plans,specs}` 已随仓库公开（`docs/superpowers/` 公开与否原本是判断题，因全树审计命中 0 才成立；理由见第五节"评委视角"第 2 条——过程证据本身就是这份作品最值钱的部分）；全树审计 `npm run submit:audit -- --include-plans` 命中 0。
+- **撤回一句本文件第七节的老写法**（11-16 在新链上重跑才发现）：那里写"实测不成立——`git log --all -G'sk-[A-Za-z0-9]{20,}'` 0 命中"。**在新链上这条命令实测 2 命中**（`pem_private_key` 那条同样 2 命中，`LTAI` 0 命中）。两条都是审计脚本自己的合成样本：`1b0b07c` 把 `DASHSCOPE_API_KEY=sk-0123456789abcdefghijklmnopqrstuv` 以字面串写进 `samples`，`c9354e1` 改成运行时 `join()` 拼接后当前 blob 不再命中（所以**HEAD 树审计仍是 0 命中**，与历史扫描是两个口径）。结论不变、理由要改：那把真 key 从未进过任何提交，进过历史的是**假样本**。可预见的后果：GitHub 公开仓库的 secret scanning 可能对这两个历史 blob 报"检测到凭据"，处置是标记为 false positive，**不要为此改写历史**——历史里的合成样本正是"判据自己被抓到"的证据，删掉它等于删掉那次教训。今后引用这条扫描必须写清"树口径"还是"历史口径"。
 - **仍待办**：DashScope key 未轮换（不是拦路项）。顺序：**控制台建新 key → Qoder Sites Settings 里替换 `DASHSCOPE_API_KEY` → 线上打一条 `?action=chat` 验通 → 本地 `data/.env` 跟进 → 最后才吊销旧 key**；先吊后换会让线上 Function 立刻 500。
