@@ -3,8 +3,8 @@
 
 import { embed, generate } from "./dashscope.ts";
 import type { WebSource } from "./dashscope.ts";
-import { byArxiv, byCve, byCwe, byTactic, byTechnique, keyword, nvdLive, vector } from "./kb.ts";
-import type { Backend, Doc } from "./kb.ts";
+import { byArxiv, byCve, byCwe, byTactic, byTechnique, KEV_SNAPSHOT_VERSION, keyword, kevCatalog, kevDocs, kevLookup, kevScopeMatches, nvdLive, vector } from "./kb.ts";
+import type { Backend, Doc, KevEntry } from "./kb.ts";
 
 export type Mode = "auto" | "on" | "off";
 
@@ -140,6 +140,33 @@ async function collectLocal(b: Backend, question: string, embedding: number[] | 
   if (cveIds.length && !docs.some((d) => d.title.toUpperCase().includes(cveIds[0].toUpperCase()))) {
     docs = [...docs, ...await nvdLive(cveIds[0])].slice(0, 6);
   }
+  // 第 2 层之 KEV 目录（Task 4 Step 4，第 9 条缺陷的真修复在这里，不在生成后的硬校验里）：
+  // 触发条件**只有**“问题在问在野利用”。不得附加 docs.length === 0、“本地有没有命中”之类的条件——
+  // 本地兜底给出 5 条不相干条目时恰恰最需要目录，把条件挂回本地检索结果就是把第 9 条缺陷重新实现一遍。
+  // KEV_HINT / KEV_MARK_RE / CVE_ID_RE 是本文件后面的模块级 const：collectLocal 只在 runChat 里被调用，
+  // 那时模块早已求值完，不存在 TDZ 问题；不要为了“看着顺眼”把它们上移，那会让 diff 混进无关搬动。
+  if (KEV_HINT.test(question)) {
+    const cat = await kevCatalog();                     // null = 目录没拉到；≠“目录里没有”（缺陷 4 的老坑）
+    if (cat) {
+      // 只补本地证据里“没有 KEV 标注”的那些编号：已有标注的一律不动，本地条目携带的
+      // CVSS／受影响版本也一条不删——这一支只在 KEV 问题上生效，删本地证据会让
+      // “CVE-x 的 CVSS 和受影响版本”这类题回归（现评测集里就有）。
+      const annotated = new Set(docs
+        .filter((d) => KEV_MARK_RE.test(String(d.content)))
+        .map((d) => (String(d.title) + String(d.content)).match(CVE_ID_RE)?.[0]?.toUpperCase())
+        .filter((x): x is string => Boolean(x)));
+      // Task 3 把 kevScopeMatches 的返回形状改成 {entries, scope, totalMatched}：产品词打空时
+      // 调用方必须能从 scope 看出自己拿的是回落集合，别把它当产品全集（第 10 条缺陷的同源问题）。
+      const scoped = kevScopeMatches(question, cat.values());
+      const fresh = kevDocs(scoped.entries.filter((e) => !annotated.has(e.cveID)));
+      // 上限 5/8 的取法：scoped.entries 已按 dateAdded 倒序截到 12；旗标题（微软 Office + 2026）
+      // 实测目录侧 5 条、过滤掉本地已有标注的 21509/21514 后剩 3 条，取前 5 足够。
+      // 这里写“5 条（过滤前）/3 条（过滤后）”而不是笼统一句“命中 3 条”：slice(0,5) 在 11-14 的
+      // 真实目录上一条不截，所以它是“没起作用”而不是“够用”——哪天 Office 的 2026 条目涨到 7 条，
+      // 这个 5 就会静默丢掉最新的 2 条。回归里有一条用例专门钉 CVE-2026-124194 必须在注入集里。
+      if (fresh.length) docs = dedupe([...fresh.slice(0, 5), ...docs]).slice(0, 8);
+    }
+  }
   return dropOffTacticDocs(question, docs);
 }
 
@@ -270,6 +297,154 @@ export function kevFacts(question: string, docs: Doc[]): string {
     + "禁止把它们列进“已被确认在野利用”的清单。";
 }
 
+// ── Task 4：生成后硬校验 ──────────────────────────────────────────────────────
+// 与 scripts/regression.test.mjs 里那条 KEV 断言用例同一判据（改这里必须同步改那里，
+// 判分器与代码各写一遍判据是本项目踩过两次的坑）。
+const SENT_SPLIT = /(?<=[。；;\n])/;
+const KEV_ASSERT = /在野|已被利用|确认利用|被确认|active exploitation|ransomware/i;
+const KEV_NEGATE = /未经|无法确认|不确定|未见|不属于|尚无|未进入|不在|不满足|没有公开|无公开|尚无/;
+
+/** 返回“被断言为在野利用、但正文未同时给出 KEV 日期”的编号（去重、大写）。 */
+export function kevAssertedIds(answer: string): string[] {
+  const out = new Set<string>();
+  for (const s of String(answer).split(SENT_SPLIT)) {
+    if (!KEV_ASSERT.test(s) || KEV_NEGATE.test(s)) continue;
+    if (/20\d\d-\d\d-\d\d/.test(s)) continue;            // 同句已给日期：合格
+    for (const m of s.match(/\bCVE-\d{4}-\d{4,7}\b/gi) ?? []) out.add(m.toUpperCase());
+  }
+  return [...out];
+}
+
+/** 断言里提到、但本库资料没给 KEV 标注的编号（决定要不要现查目录）。 */
+function kevUnannotatedIds(answer: string, docs: Doc[]): string[] {
+  const annotated = new Set<string>();
+  for (const d of docs) {
+    if (!KEV_MARK_RE.test(String(d.content ?? ""))) continue;
+    for (const m of String(`${d.title} ${d.content}`).match(/\bCVE-\d{4}-\d{4,7}\b/gi) ?? []) {
+      annotated.add(m.toUpperCase());
+    }
+  }
+  return kevAssertedIds(answer).filter((id) => !annotated.has(id));
+}
+
+export interface KevCheck { answer: string; corrected: boolean; reason: string; }
+
+/**
+ * 生成后硬校验：KEV 是有门槛的断言，检索/闸门给了证据不等于模型照着说。
+ * 三条分支——(1) 目录确认但正文没提 → 追加代码核验的补充；
+ * (2) 正文断言但目录确实没有 → 降级表述，不删编号；
+ * (3) 目录不可达 → 只声明“未能核验”，绝不写“KEV 未收录”。
+ * 本地快照版本写进措辞（KEV_SNAPSHOT_VERSION），让“我们没查到”与“现实中不存在”分得开。
+ *
+ * 触发条件看 question，不看正文——线上那次退化回答是“知识库与网络检索均未覆盖……”，
+ * 正文里既没有“在野”也没有 KEV 字样；扫正文的 guard 会把它判成“与 KEV 无关”直接放行，
+ * 硬校验就永远不触发（第一版草稿正是这样写的）。
+ */
+export function kevCorrection(
+  question: string, answer: string, docs: Doc[],
+  catalog: { confirmed: KevEntry[]; absent: string[]; unavailable: boolean },
+): KevCheck {
+  const text = String(answer ?? "");
+  if (!KEV_HINT.test(String(question ?? "")) && kevAssertedIds(text).length === 0) {
+    return { answer: text, corrected: false, reason: "not_kev" };
+  }
+  if (catalog.unavailable) {
+    return {
+      answer: `${text}\n\n【KEV 核验状态】CISA KEV 目录当前不可达，本轮未能核验上述编号的在野利用状态；`
+        + `下方结论仅依据本地知识库快照（版本 ${KEV_SNAPSHOT_VERSION}）中带有 KEV 标注的条目，不代表该漏洞不在 KEV 目录中。`,
+      corrected: false, reason: "catalog_unavailable",
+    };
+  }
+  const asserted = kevAssertedIds(text);
+  const addenda: string[] = [];
+  // 题干点明年份时，"漏说"的基准随之收窄——与 kevUnderCount 同一纪律：把 2022 年收录的条目追加进
+  // "2026 年有哪些"的回答，等于用代码制造时间错位（system 判据 6 明令禁止的那类措辞）。
+  // 题干没给年份时不过滤：那时"已被确认在野利用"本就没有时间范围，漏了就该补（回归用例⑤的反方向）。
+  // 日期为空的条目在有年份限定时一并落不进去：不能断言它属于该年，就不能替它说话。
+  const yearClaim = (String(question ?? "").match(/20\d{2}/) ?? [])[0] ?? null;
+
+  // (2) 断言了但目录确实没有 → 降级。不删编号：删了会让人以为我们查不到。
+  const wronglyAsserted = catalog.absent.filter((id) => asserted.includes(id));
+  if (wronglyAsserted.length) {
+    addenda.push(`【代码更正】${wronglyAsserted.join("、")} 不在 KEV 目录中（CISA 未收录），`
+      + `因此不构成“已被确认在野利用”；上文若把它列为在野利用，以本更正为准（KEV 目录版本以本次查询为准）。`);
+  }
+
+  // (1) 目录或本地资料已确认、正文却没给编号或没给日期 → 补一条可核验事实。
+  //     docs 在这里才真正被使用：本地 KEV 标注里的日期同样算“已确认”，这样即使边缘运行时
+  //     拉不到 CISA 目录，旗标题仍能被兜住。解析只存在这一处，不要在调用方再写一遍。
+  const fromDocs: KevEntry[] = docs
+    .filter((d) => KEV_MARK_RE.test(String(d.content ?? "")))
+    .map((d) => {
+      const c = String(d.content);
+      return {
+        cveID: (String(d.title).match(CVE_ID_RE)?.[0]
+          ?? c.match(CVE_ID_RE)?.[0] ?? "").toUpperCase(),
+        vendorProject: c.match(/厂商：([^｜\n]+)/)?.[1] ?? "",
+        product: c.match(/产品：([^｜\n]+)/)?.[1] ?? "",
+        vulnerabilityName: String(d.title).replace(/^CVE-\d{4}-\d{4,7}:\s*/i, ""),
+        dateAdded: c.match(/KEV 收录：(20\d\d-\d\d-\d\d)/)?.[1] ?? "",
+        dueDate: c.match(/修复期限：(20\d\d-\d\d-\d\d)/)?.[1] ?? "",
+        requiredAction: "",
+      };
+    }).filter((e) => e.cveID && e.dateAdded);
+  const known = new Map<string, KevEntry>();
+  for (const e of [...fromDocs, ...catalog.confirmed]) if (!known.has(e.cveID)) known.set(e.cveID, e);
+  const missing = [...known.values()]
+    .filter((e) => !yearClaim || String(e.dateAdded ?? "").startsWith(yearClaim))
+    .filter((e) => !text.toUpperCase().includes(e.cveID) || !text.includes(e.dateAdded));
+  if (missing.length) {
+    // 最多列 3 条：这段会被直接拼到回答后面，而 system 规则要求模型“控制在 320 字内”。
+    // 全列会把答案撑成目录摘要；超过 3 条时列前 3 条（按收录日期倒序）并说明还有几条。
+    const fmt = (e: KevEntry) =>
+      `${e.cveID}（${e.vendorProject} ${e.product}，${e.vulnerabilityName}，KEV 收录 ${e.dateAdded}、修复期限 ${e.dueDate}）`;
+    const ordered = [...missing].sort((a, b) => String(b.dateAdded).localeCompare(String(a.dateAdded)));
+    const listed = ordered.slice(0, 3).map(fmt);
+    const more = ordered.length > 3 ? `；另有 ${ordered.length - 3} 条同厂商/产品在 KEV 目录中，见出处链接` : "";
+    addenda.push(`【代码核验的 KEV 事实】本地资料与 CISA 目录交叉核验后确认在野利用：${listed.join("；")}${more}。`
+      + `此条由代码依据 KEV 目录字段给出，不依赖模型是否记得。`);
+  }
+  if (!addenda.length) return { answer: text, corrected: false, reason: "clean" };
+  return { answer: `${text}\n\n${addenda.join("\n\n")}`, corrected: true, reason: "corrected" };
+}
+
+/**
+ * 第三个失效面：不是“说过头”，是“说少了”。2026-11-15 实测（docs/eval-archive/online-kev-off-2026-11-15.json）
+ * MODE=off 6/6 判绿，但 6/6 都把范围收成“只有 CVE-2026-21509 符合 2026 年”，而目录按 dateAdded 落在 2026
+ * 的微软 Office 条目有 5 条。根因不在模型：本地检索只送了 1 条到眼前，模型如实总结——**“只送了 1 条”
+ * 被当成“世上只有 1 条”**。kevCorrection 的①②两支都挡不住它（编号是真的、也没漏说“送进来的”那条）。
+ *
+ * 所以基准必须是**目录侧的完整命中集**（kevScopeMatches），不能是 docs：
+ * 触发条件＝问题点明厂商/产品且带年份 + scope 是 product + 正文列出的该范围编号数 < 该范围命中数。
+ * 两道不得开口的边界与①②同源：scope 为 null（产品词打空、退回厂商/名称回落集）时不能声称“同一范围共 M 条”；
+ * totalMatched > entries.length（被 slice(0,12) 截断）时 M 也不是全集，同样不写。
+ * 宁可少断言，不可把“送到眼前的集合”当成“世界的全集”。
+ */
+export function kevUnderCount(
+  question: string, answer: string,
+  scope: { entries: KevEntry[]; scope: "product" | "vendor" | "name" | null; totalMatched: number },
+): string | null {
+  const q = String(question ?? "");
+  if (!KEV_HINT.test(q)) return null;
+  const year = (q.match(/20\d{2}/) ?? [])[0];
+  if (!year) return null;                     // 无年份时“共 M 条”会被理解成整目录
+  if (scope?.scope !== "product") return null; // 回落集合不是产品全集，不能据此数条目
+  const inYear = (scope.entries ?? []).filter((e) => String(e.dateAdded ?? "").startsWith(year));
+  if (!inYear.length) return null;
+  if ((scope.totalMatched ?? 0) > inYear.length) return null;   // 命中集被截断，M 不是全集
+  const stated = new Set((String(answer ?? "").toUpperCase().match(/\bCVE-\d{4}-\d{4,7}\b/gi) ?? []));
+  const mentioned = inYear.filter((e) => stated.has(e.cveID.toUpperCase())).length;
+  if (mentioned >= inYear.length) return null;                 // 已经列全，不许追加
+  const omitted = inYear.filter((e) => !stated.has(e.cveID.toUpperCase()))
+    .sort((a, b) => String(b.dateAdded).localeCompare(String(a.dateAdded)))
+    .slice(0, 4).map((e) => e.cveID);
+  return `【代码核验的范围更正】本次回答列出 ${mentioned} 条，而 CISA KEV 目录在同一范围内共 ${inYear.length} 条`
+    + `（厂商 ${scope.entries[0]?.vendorProject ?? "—"}／产品 ${scope.entries[0]?.product ?? "—"}／收录日期落在 ${year}）。`
+    + `未列出的包括：${omitted.join("、")}。`
+    + `请把措辞从“只有 ${mentioned} 条”改成“本次检索到 ${mentioned} 条，KEV 目录在同一范围内共 ${inYear.length} 条”——`
+    + `前者是对目录全集的断言，本次查询不支持它。`;
+}
+
 export async function runChat(b: Backend, dashKey: string, rawQuestion: string, category: string | null, mode: Mode): Promise<ChatOutcome> {
   const question = rawQuestion;
 
@@ -349,22 +524,60 @@ export async function runChat(b: Backend, dashKey: string, rawQuestion: string, 
     };
   }
 
+  // 生成后硬校验：只在问题像 KEV 题、或正文里出现无 KEV 标注的编号时才现查目录，
+  // 避免每次对话都拉 1.8 MB 的 feed（有 6 小时缓存，但冷启动代价仍是真的）。
+  const needKevCheck = KEV_HINT.test(question) || kevAssertedIds(gen.answer).length > 0;
+  let payloadAnswer = gen.answer;
+  let kevReason = "skipped";
+  if (needKevCheck) {
+    // 只查"正文断言了、本地资料却没 KEV 标注"的编号；本地已标注的那批由 kevCorrection
+    // 自己从 docs 里解析（见其 fromDocs 分支），所以目录不可达时旗标题照样兜得住。
+    const cat = await kevLookup(kevUnannotatedIds(gen.answer, docs));
+    const chk = kevCorrection(question, gen.answer, docs, cat);
+    payloadAnswer = chk.answer;
+    kevReason = chk.reason;
+    // 计划 Step 5 的片段只接了 kevCorrection——kevUnderCount 在本任务 Interfaces 里定义了、
+    // 回归里也钉了用例，却没有任何调用方，那是死代码：第三个失效面（"说少了"）在线上一条都不会生效。
+    // 裁定：在这里接上。基准必须是目录侧完整命中集（kevScopeMatches），不能是 docs——
+    // 本地只送到 1 条时拿 docs 当基准永远判不出"目录里其实有 5 条"，而这正是 11-15 线上 6/6 判绿、
+    // 6/6 说少的根因。cat.unavailable 说明目录没拉到，此时返回 null：宁可少断言，不可把
+    // "送到眼前的集合"当成"世界的全集"（与①②同源的纪律）。
+    if (!cat.unavailable) {
+      const map = await kevCatalog();
+      if (map) {
+        const under = kevUnderCount(question, payloadAnswer, kevScopeMatches(question, map.values()));
+        if (under) {
+          payloadAnswer = `${payloadAnswer}\n\n${under}`;
+          kevReason = chk.corrected ? "corrected+undercount" : "undercount";
+        }
+      }
+    }
+  }
+
   const searchUsed = gen.searchUsed;
   const coverage: ChatPayload["coverage"] = !searchUsed ? "local" : docs.length ? "mixed" : "web";
   const note = searchUsed
     ? (sufficient ? "结合本地知识库与网络检索作答；网络来源未经知识库校验" : "本地知识库未有效覆盖本题，回答主要依据网络检索")
     : (sufficient ? "回答基于本地知识库" : "本地知识库未有效覆盖本题，且当前模式不联网；下列来源仅为近似条目，请勿当作权威结论");
+  // 核验状态写进 note，不写进正文：正文已经有【代码更正】/【代码核验的 KEV 事实】这类带来源的段落，
+  // note 只负责告诉前端"这一轮的在野利用断言有没有被代码核验过"，两条各说一件事。
+  // "clean"/"skipped" 一律空串——硬校验不能变成给所有回答加段落（回归用例④钉的就是这条）。
+  const kevNote = kevReason === "catalog_unavailable" ? "（KEV 目录不可达，未核验在野利用状态）"
+    : kevReason === "corrected" ? "（已按 CISA KEV 目录核验并更正/补充在野利用结论）"
+    : kevReason === "undercount" ? "（已按 CISA KEV 目录核验：回答列出的条数少于目录同范围命中数，范围已更正）"
+    : kevReason === "corrected+undercount" ? "（已按 CISA KEV 目录核验，结论与条目范围均已更正）"
+    : "";
 
   return {
     status: 200,
     body: {
-      answer: gen.answer,
+      answer: payloadAnswer,
       sources: docs.map(toSource),
       web_sources: searchUsed ? gen.web : [],
       search_used: searchUsed,
       mode,
       coverage,
-      note,
+      note: note + kevNote,
     },
   };
 }

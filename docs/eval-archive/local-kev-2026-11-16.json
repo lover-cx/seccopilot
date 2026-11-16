@@ -1,0 +1,183 @@
+{
+ "site": "http://127.0.0.1:8000",
+ "q": "2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？",
+ "runs": [
+  {
+   "runId": "2026-11-16T14-30-52-748Z_off_127-0-0-1-8000",
+   "mode": "off",
+   "site": "http://127.0.0.1:8000",
+   "startedAt": "2026-11-16T06:31:09.092Z",
+   "ok": 4,
+   "okWithLocal": 4,
+   "total": 4,
+   "bad": 0,
+   "srcHasId": 4,
+   "watch": {
+    "CVE-2026-21514": 4,
+    "CVE-2026-124194": 4
+   },
+   "rows": [
+    {
+     "i": 1,
+     "run": "2026-11-16T14-30-52-748Z_off_127-0-0-1-8000",
+     "http": 200,
+     "mode": "off",
+     "coverage": "local",
+     "searchUsed": false,
+     "note": "回答基于本地知识库",
+     "nSrc": 8,
+     "nWeb": 0,
+     "srcHasId": true,
+     "srcTitles": [
+      "CVE-2026-124194: Microsoft Office Outlook Missing User Interaction for Potentially Unsafe Action Vulnerabil",
+      "CVE-2009-0238: Microsoft Office Remote Code Execution",
+      "CVE-2026-21514: Microsoft Office Word Reliance on Untrusted Inputs in a Security Decision Vulnerability",
+      "CVE-2009-0556: Microsoft Office PowerPoint Code Injection Vulnerability",
+      "CVE-2016-7193: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2026-21509: Microsoft Office Security Feature Bypass Vulnerability"
+     ],
+     "srcSims": [
+      1,
+      1,
+      1,
+      1,
+      0.74,
+      0.74,
+      0.74,
+      0.74
+     ],
+     "hasId": true,
+     "hasDate": true,
+     "hasType": true,
+     "degraded": false,
+     "watch": {
+      "CVE-2026-21514": true,
+      "CVE-2026-124194": true
+     },
+     "webTitles": [],
+     "answer": "2026 年被 CISA 确认在野利用的微软 Office 漏洞如下：\n\n- CVE-2026-124194：Microsoft Office Outlook 缺失用户交互的潜在不安全操作漏洞，KEV 收录日期为 2026-11-10 [L1]。\n- CVE-2026-21514：Microsoft Office Word 对不信任输入的安全决策依赖漏洞，KEV 收录日期为 2026-02-10 [L3]。\n- CVE-2026-21509：Microsoft Office 安全功能绕过漏洞，KEV 收录日期为 2026-01-26 [L6]。\n- CVE-2009-0238：Microsoft Office 远程代码执行漏洞，KEV 收录日期为 2026-04-14 [L2]。\n- CVE-2009-0556：Microsoft Office PowerPoint 代码注入漏洞，KEV 收录日期为 2026-01-07 [L4]。\n\n以上漏洞均已在 CISA KEV 列表中确认，并标注“在野利用”。"
+    },
+    {
+     "i": 2,
+     "run": "2026-11-16T14-30-52-748Z_off_127-0-0-1-8000",
+     "http": 200,
+     "mode": "off",
+     "coverage": "local",
+     "searchUsed": false,
+     "note": "回答基于本地知识库",
+     "nSrc": 8,
+     "nWeb": 0,
+     "srcHasId": true,
+     "srcTitles": [
+      "CVE-2026-124194: Microsoft Office Outlook Missing User Interaction for Potentially Unsafe Action Vulnerabil",
+      "CVE-2009-0238: Microsoft Office Remote Code Execution",
+      "CVE-2026-21514: Microsoft Office Word Reliance on Untrusted Inputs in a Security Decision Vulnerability",
+      "CVE-2009-0556: Microsoft Office PowerPoint Code Injection Vulnerability",
+      "CVE-2016-7193: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2026-21509: Microsoft Office Security Feature Bypass Vulnerability"
+     ],
+     "srcSims": [
+      1,
+      1,
+      1,
+      1,
+      0.74,
+      0.74,
+      0.74,
+      0.74
+     ],
+     "hasId": true,
+     "hasDate": true,
+     "hasType": true,
+     "degraded": false,
+     "watch": {
+      "CVE-2026-21514": true,
+      "CVE-2026-124194": true
+     },
+     "webTitles": [],
+     "answer": "2026 年被 CISA 确认在野利用的微软 Office 漏洞如下：\n\n- CVE-2026-124194：Microsoft Office Outlook 缺失用户交互的潜在不安全操作漏洞，KEV 收录日期为 2026-11-10，修复期限为 2026-11-24 [L1]。\n- CVE-2009-0238：Microsoft Office 远程代码执行漏洞，KEV 收录日期为 2026-04-14，修复期限为 2026-04-28 [L2]。\n- CVE-2026-21514：Microsoft Office Word 在安全决策中依赖不受信任输入漏洞，KEV 收录日期为 2026-02-10，修复期限为 2026-03-03 [L3]。\n- CVE-2009-0556：Microsoft Office PowerPoint 代码注入漏洞，KEV 收录日期为 2026-01-07，修复期限为 2026-01-28 [L4]。\n- CVE-2026-21509：Microsoft Office 安全功能绕过漏洞，KEV 收录日期为 2026-01-26，修复期限为 2026-02-16 [L6]。\n\n以上漏洞均已在 CISA KEV 列表中确认在野利用。"
+    },
+    {
+     "i": 3,
+     "run": "2026-11-16T14-30-52-748Z_off_127-0-0-1-8000",
+     "http": 200,
+     "mode": "off",
+     "coverage": "local",
+     "searchUsed": false,
+     "note": "回答基于本地知识库",
+     "nSrc": 8,
+     "nWeb": 0,
+     "srcHasId": true,
+     "srcTitles": [
+      "CVE-2026-124194: Microsoft Office Outlook Missing User Interaction for Potentially Unsafe Action Vulnerabil",
+      "CVE-2009-0238: Microsoft Office Remote Code Execution",
+      "CVE-2026-21514: Microsoft Office Word Reliance on Untrusted Inputs in a Security Decision Vulnerability",
+      "CVE-2009-0556: Microsoft Office PowerPoint Code Injection Vulnerability",
+      "CVE-2016-7193: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2026-21509: Microsoft Office Security Feature Bypass Vulnerability"
+     ],
+     "srcSims": [
+      1,
+      1,
+      1,
+      1,
+      0.74,
+      0.74,
+      0.74,
+      0.74
+     ],
+     "hasId": true,
+     "hasDate": true,
+     "hasType": true,
+     "degraded": false,
+     "watch": {
+      "CVE-2026-21514": true,
+      "CVE-2026-124194": true
+     },
+     "webTitles": [],
+     "answer": "2026 年被 CISA 确认在野利用的微软 Office 漏洞包括：\n\n- CVE-2026-124194：Microsoft Office Outlook 缺失用户交互的潜在不安全操作漏洞，KEV 收录日期为 2026-11-10，修复期限为 2026-11-24 [L1]。\n- CVE-2009-0238：Microsoft Office 远程代码执行漏洞，KEV 收录日期为 2026-04-14，修复期限为 2026-04-28 [L2]。\n- CVE-2026-21514：Microsoft Office Word 在安全决策中依赖不受信任输入漏洞，KEV 收录日期为 2026-02-10，修复期限为 2026-03-03 [L3]。\n- CVE-2009-0556：Microsoft Office PowerPoint 代码注入漏洞，KEV 收录日期为 2026-01-07，修复期限为 2026-01-28 [L4]。\n- CVE-2026-21509：Microsoft Office 安全功能绕过漏洞，KEV 收录日期为 2026-01-26，修复期限为 2026-02-16 [L6]。\n\n以上漏洞均已在 CISA KEV 列表中确认在野利用。"
+    },
+    {
+     "i": 4,
+     "run": "2026-11-16T14-30-52-748Z_off_127-0-0-1-8000",
+     "http": 200,
+     "mode": "off",
+     "coverage": "local",
+     "searchUsed": false,
+     "note": "回答基于本地知识库",
+     "nSrc": 8,
+     "nWeb": 0,
+     "srcHasId": true,
+     "srcTitles": [
+      "CVE-2026-124194: Microsoft Office Outlook Missing User Interaction for Potentially Unsafe Action Vulnerabil",
+      "CVE-2009-0238: Microsoft Office Remote Code Execution",
+      "CVE-2026-21514: Microsoft Office Word Reliance on Untrusted Inputs in a Security Decision Vulnerability",
+      "CVE-2009-0556: Microsoft Office PowerPoint Code Injection Vulnerability",
+      "CVE-2016-7193: Microsoft Office Memory Corruption Vulnerability",
+      "CVE-2026-21509: Microsoft Office Security Feature Bypass Vulnerability"
+     ],
+     "srcSims": [
+      1,
+      1,
+      1,
+      1,
+      0.74,
+      0.74,
+      0.74,
+      0.74
+     ],
+     "hasId": true,
+     "hasDate": true,
+     "hasType": true,
+     "degraded": false,
+     "watch": {
+      "CVE-2026-21514": true,
+      "CVE-2026-124194": true
+     },
+     "webTitles": [],
+     "answer": "2026 年被 CISA 确认在野利用的微软 Office 漏洞如下：\n\n- CVE-2026-124194：Microsoft Office Outlook 缺失用户交互的潜在不安全操作漏洞，KEV 收录日期为 2026-11-10 [L1]。\n- CVE-2026-21514：Microsoft Office Word 依赖不受信任输入进行安全决策漏洞，KEV 收录日期为 2026-02-10 [L3]。\n- CVE-2026-21509：Microsoft Office 安全功能绕过漏洞，KEV 收录日期为 2026-01-26 [L6]。\n- CVE-2009-0238：Microsoft Office 远程代码执行漏洞，KEV 收录日期为 2026-04-14 [L2]。\n- CVE-2009-0556：Microsoft Office PowerPoint 代码注入漏洞，KEV 收录日期为 2026-01-07 [L4]。\n\n以上漏洞均已在 CISA KEV 列表中确认在野利用。"
+    }
+   ]
+  }
+ ]
+}

@@ -42,6 +42,27 @@ const postChat = async (question, extra = {}) => {
   return JSON.parse(text);
 };
 
+// ── 判分尺子本身 ────────────────────────────────────────────────────────────
+// "在野利用断言必须带 KEV 日期"这条判据原先抄在每个联网用例里，11-12 和 11-16 两次都是它**误伤正确回答**：
+// 模型否定式表述（"尚无公开的在野利用报告""未发现实际在野利用""未被 CISA KEV 明确收录"）句里也含"在野利用"。
+// 提到模块作用域并配一条不联网就能跑的自证，是为了让"放宽例外词"这件事必须同时让真违规照样判红——
+// 判据写在联网用例里时，SKIP_LLM=1 下它根本不被执行，改红了也没人看得见。
+const KEV_NEGATION = /未经|未被|未收录|未列入|未进入|未发现|未确认|无法确认|不确定|未见|不属于|尚无|暂无|不在|不满足|没有公开|无公开|无证据|没有证据|并非|而非/;
+const kevViolations = (text) => String(text).split(/(?<=[。；;\n])/).filter((s) =>
+  /CVE-\d{4}-\d{4,7}/i.test(s) && /在野|已被利用|确认利用|active exploitation/i.test(s)
+  && !/20\d\d-\d\d-\d\d/.test(s)
+  && !KEV_NEGATION.test(s));
+
+test("判分尺子 kevViolations：未给日期的断言判红，否定式和已给日期的判绿", () => {
+  const v = kevViolations(
+    "CVE-2026-00001 已被确认在野利用。"
+    + "CVE-2026-00002 虽有公开 PoC，但未发现实际在野利用。"
+    + "CVE-2026-00003 虽有详细分析，但未被 CISA KEV 明确收录为“在野利用”状态。"
+    + "CVE-2026-00004 已被确认在野利用，KEV 收录 2026-01-26。");
+  assert.deepEqual(v, ["CVE-2026-00001 已被确认在野利用。"],
+    `应只判红那一条无日期断言，实际 ${JSON.stringify(v)}`);
+});
+
 // ── 1. 知识库统计 ────────────────────────────────────────────────────────────
 test("stats 返回完整计数", async () => {
   const d = await get("stats");
@@ -317,6 +338,10 @@ let gapFacts = null;
 let dropOffTacticDocs = null;
 let requestedTactic = null;
 let kevFacts = null;
+// Task 4：生成后硬校验的三个入口（判据与回归用例同源，见 chat.ts 里的注释）
+let kevAssertedIds = null;
+let kevCorrection = null;
+let kevUnderCount = null;
 // CISA KEV 现查目录层（functions/lib/kb.ts）：4 个纯函数 + 1 个带缓存的取数函数。
 // kevCatalog 也要存进顶层变量——Step 4 的真实目录范围查询用例直接对它取全量条目。
 let kevFromCatalog = null;
@@ -324,19 +349,28 @@ let kevLookup = null;
 let kevScopeMatches = null;
 let kevDocs = null;
 let kevCatalog = null;
+// 必须在 try 之前声明：catch 体在模块顶层求值时就跑，放到文件末尾的 let 会撞 TDZ。
+let tsImportError = "";
+// 区分两种跳过：环境问题（Node 读不了 .ts）与开发状态（模块能导入但符号还没导出＝未实现）。
+// 把"还没写"报成"本机跑不了"，就是 Task 3 评审第 1 条 Important 说的那种假跳过。
+let tsLoaded = false;
 try {
   const m = await import("../functions/lib/chat.ts");
   gapFacts = m.localTimeGapFacts;
   dropOffTacticDocs = m.dropOffTacticDocs;
   requestedTactic = m.requestedTactic;
   kevFacts = m.kevFacts;
+  kevAssertedIds = m.kevAssertedIds;
+  kevCorrection = m.kevCorrection;
+  kevUnderCount = m.kevUnderCount;
   const kb = await import("../functions/lib/kb.ts");
   kevFromCatalog = kb.kevFromCatalog;
   kevLookup = kb.kevLookup;
   kevScopeMatches = kb.kevScopeMatches;
   kevDocs = kb.kevDocs;
   kevCatalog = kb.kevCatalog;
-} catch { /* Node 版本不支持 .ts 直读时跳过本用例 */ }
+  tsLoaded = true;
+} catch (e) { tsImportError = String(e?.message ?? e).split("\n")[0].slice(0, 200); /* 导入失败→纯函数用例显式跳过，理由写进 skip 消息 */ }
 
 test("localTimeGapFacts：只在本地库确实缺该时间窗条目时兜底", (t) => {
   if (!gapFacts) return t_skip(t);
@@ -423,6 +457,128 @@ test("kevFacts：在野利用只能引用带 KEV 标注的资料", (t) => {
   assert.match(msg, /禁止把它们列进/);
   assert.match(kevFacts(q, [plainDoc]), /没有任何条目/, "全部无 KEV 标注时应说明清单为空");
   assert.equal(kevFacts("CWE-79 是什么弱点？如何缓解？", [kevDoc]), "", "非 KEV 问题不该插入这段");
+});
+
+// 纯函数回归：Task 4 的生成后硬校验。判分器与代码必须共用同一判据（本项目已因"各写一遍"踩过两次），
+// 所以这里同时钉 kevAssertedIds 与 kevCorrection，而不是只钉那个能直接看到文本的断言。
+test("kevAssertedIds + kevCorrection：断言与 KEV 事实对不上时给出代码层更正", (t) => {
+  if (!kevAssertedIds || !kevCorrection) return t_skip(t);
+  const Q = "2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？";
+
+  // 判据同源：同句给了 KEV 日期=合格，否定式=合格，两者都不得进违规清单。
+  // 中间那句必须**同时**含断言词（"已被确认在野利用"）和日期：计划原文写的是"CVE-2026-21509 于 2026-01-26
+  // 进入 CISA KEV"，那句里一个断言词都没有，kevAssertedIds 在 KEV_ASSERT 那一步就 continue 了，
+  // 根本走不到日期豁免——把日期豁免整条删掉做反证时用例照样判绿（2026-11-16 实测）。
+  // 改的是样本让它真的走到那条分支，判据本身一个字没动。
+  assert.deepEqual(
+    kevAssertedIds("CVE-2026-83542 已被确认在野利用。CVE-2026-21509 已被确认在野利用，KEV 收录日期 2026-01-26。"
+      + "CVE-2026-119618 尚无公开的在野利用报告。"),
+    ["CVE-2026-83542"], "带日期的合格表述与否定式表述都不该进违规清单");
+
+  const doc = {
+    id: 1, title: "CVE-2026-21509: Microsoft Office Security Feature Bypass Vulnerability",
+    content: "在野利用（CISA KEV）｜厂商：Microsoft｜产品：Office｜KEV 收录：2026-01-26｜修复期限：2026-02-16\n正文…",
+    source_url: "u", category: "cve", similarity: 1,
+  };
+  const kev21509 = {
+    cveID: "CVE-2026-21509", vendorProject: "Microsoft", product: "Office",
+    vulnerabilityName: "Microsoft Office Security Feature Bypass Vulnerability",
+    dateAdded: "2026-01-26", dueDate: "2026-02-16", requiredAction: "Apply patch.",
+  };
+
+  // ① 正文整条未提及（线上旗标题退化回答就是这句）：必须补代码核验的 KEV 事实
+  const empty = kevCorrection(Q, "知识库与网络检索均未覆盖 2026 年 CISA 关于 Office 产品漏洞的新增信息。", [doc],
+    { confirmed: [kev21509], absent: [], unavailable: false });
+  assert.equal(empty.corrected, true, "回答漏掉已确认的在野利用条目时应补更正");
+  assert.match(empty.answer, /CVE-2026-21509/);
+  assert.match(empty.answer, /2026-01-26/);
+  assert.match(empty.answer, /代码核验|代码更正/, "更正文本必须声明来源是代码，不是模型判断");
+
+  // ② 未经确认的编号被说成在野利用：必须降级，且不得静默删掉编号。
+  //    这句里刻意不出现任何 20xx-xx-xx：同句有日期会被判据当作"已给 KEV 证据"而放行，
+  //    写个披露日期进来会把用例变成假绿。
+  const bad = kevCorrection(Q, "以下漏洞已被确认在野利用：CVE-2026-83542。", [doc],
+    { confirmed: [], absent: ["CVE-2026-83542"], unavailable: false });
+  assert.match(bad.answer, /CVE-2026-83542/, "不得静默删除编号，那会让人以为我们查不到");
+  assert.match(bad.answer, /不在 KEV 目录中/, "应降级为'不在 KEV 目录中（CISA 未收录）'");
+
+  // ③ 目录拉不到时不下"不存在"的结论（第 4 条缺陷那一类）
+  const off = kevCorrection("最近有哪些已被确认在野利用的 Apache 产品漏洞？",
+    "CVE-2026-83542 已被确认在野利用。", [], { confirmed: [], absent: [], unavailable: true });
+  assert.match(off.answer, /目录当前不可达|未能核验/);
+  assert.ok(!/不存在|未被确认利用/.test(off.answer), "不可达时不得断言其不在 KEV");
+  assert.equal(off.corrected, false, "无法核验时不改写结论，只加核验状态说明");
+
+  // ④ 与 KEV 无关的问题一律不动正文：硬校验不能变成给所有回答加段落
+  const other = kevCorrection("CWE-79 是什么弱点？如何缓解？",
+    "CWE-79 是跨站脚本，缓解方式是输出编码。", [], { confirmed: [], absent: [], unavailable: false });
+  assert.equal(other.corrected, false);
+  assert.equal(other.reason, "not_kev");
+  assert.equal(other.answer, "CWE-79 是跨站脚本，缓解方式是输出编码。");
+
+  // ⑤ 题干点明年份时，更正只补该年份内收录的条目。2026-11-16 本机 runChat 实测：Step 4 注入让上下文
+  //    里同时出现 2022/2016/2015 年收录的 Office KEV 条目，kevCorrection 把它们当成"正文漏说"追加进
+  //    "2026 年有哪些"的回答——那是用代码制造时间错位，正是判据 6 要消灭的东西。
+  //    没有这一组，⑤ 就是 kevUnderCount 那道闸门（同一纪律）在 kevCorrection 这边的缺口。
+  const oldDoc = {
+    id: 2, title: "CVE-2016-7193: Microsoft Office Memory Corruption Vulnerability",
+    content: "在野利用（CISA KEV）｜厂商：Microsoft｜产品：Office｜KEV 收录：2022-03-03｜修复期限：2022-03-24\n正文…",
+    source_url: "u", category: "cve", similarity: 1,
+  };
+  const yearly = kevCorrection(Q, "CVE-2026-21509 已被确认在野利用，KEV 收录日期 2026-01-26。",
+    [doc, oldDoc], { confirmed: [], absent: [], unavailable: false });
+  assert.equal(yearly.corrected, false, "题干问 2026，2022 年收录的条目不该被当成漏说补进去");
+  assert.ok(!/CVE-2016-7193/.test(yearly.answer), "更正文不得把别的年份的条目塞进 2026 年的结论里");
+  // 反方向也要钉住：题干没给年份时，目录确认过的条目仍然要补（否则这条过滤会变成新的静默漏说）
+  const anyYear = kevCorrection("微软 Office 有哪些已被确认在野利用的漏洞？",
+    "CVE-2026-21509 已被确认在野利用，KEV 收录日期 2026-01-26。",
+    [doc, oldDoc], { confirmed: [], absent: [], unavailable: false });
+  assert.equal(anyYear.corrected, true, "无年份限定时老条目仍属漏说，必须补");
+  assert.match(anyYear.answer, /CVE-2016-7193/);
+});
+
+// 纯函数回归：第 10 条缺陷——"只送了 1 条"被模型如实总结成"世上只有 1 条"。
+// 2026-11-15 实测 MODE=off N=6 六条全判绿，但 6/6 都把范围收成"只有 CVE-2026-21509 符合 2026 年"，
+// 而目录按 dateAdded 落在 2026 的微软 Office 条目有 5 条。基准必须是目录侧完整命中集，不是 docs。
+test("kevUnderCount：回答列出的条数少于目录同一范围的命中数时给出可照抄的更正文", (t) => {
+  if (!kevUnderCount) return t_skip(t);
+  const Q = "2026 年被 CISA 确认在野利用的微软 Office 漏洞有哪些？";
+  const e = (id, date) => ({
+    cveID: id, vendorProject: "Microsoft", product: "Office",
+    vulnerabilityName: `Microsoft Office ${id} Vulnerability`,
+    dateAdded: date, dueDate: date, requiredAction: "Apply patch.",
+  });
+  const five = [e("CVE-2026-21509", "2026-01-26"), e("CVE-2026-21514", "2026-11-10"),
+    e("CVE-2009-0556", "2026-05-12"), e("CVE-2009-0238", "2026-05-12"), e("CVE-2026-124194", "2026-11-10")];
+
+  // ① 线上实测形态：只报 1 条 → 必须给"共 5 条"的范围更正，且不得替模型断言"只有 1 条"
+  const under = kevUnderCount(Q, "符合的只有 CVE-2026-21509，收录于 2026-01-26。",
+    { entries: five, scope: "product", totalMatched: 5 });
+  assert.ok(under, "命中 5 条只报 1 条时必须给出范围更正");
+  assert.match(under, /共 5 条/);
+  assert.match(under, /检索到 1 条|本次给出 1 条/);
+  assert.match(under, /CVE-2026-21514|CVE-2026-124194/, "应把漏掉的编号点名出来，模型才有可照抄的事实");
+
+  // ② 反证：回答已列全 → 不得加这段话（判据不能变成"凡是 KEV 题就追加一段"）
+  assert.equal(kevUnderCount(Q,
+    "CVE-2026-21509、CVE-2026-21514、CVE-2009-0556、CVE-2009-0238、CVE-2026-124194 五条在野利用。",
+    { entries: five, scope: "product", totalMatched: 5 }), null, "列全了就不许再追加");
+
+  // ③ scope 为 null（产品词打空、退回厂商/名称命中）→ 不能声称"同一范围内共 M 条"
+  assert.equal(kevUnderCount(Q, "符合的只有 CVE-2026-21509。",
+    { entries: five, scope: null, totalMatched: 5 }), null, "回落集合不能当全集");
+
+  // ④ 被 slice(0,12) 截断（totalMatched > entries.length）→ 同样不得写全集措辞
+  assert.equal(kevUnderCount(Q, "符合的只有 CVE-2026-21509。",
+    { entries: five, scope: "product", totalMatched: 41 }), null, "命中集被截断时 M 不是全集，宁可不写");
+
+  // ⑤ 题干没有年份 → 不触发（"共 M 条"会被理解成整目录）
+  assert.equal(kevUnderCount("被 CISA 确认在野利用的微软 Office 漏洞有哪些？", "只有 CVE-2026-21509。",
+    { entries: five, scope: "product", totalMatched: 5 }), null, "无年份时不得给年度范围结论");
+
+  // ⑥ 非 KEV 题不动
+  assert.equal(kevUnderCount("CWE-79 是什么弱点？", "跨站脚本。",
+    { entries: five, scope: "product", totalMatched: 5 }), null);
 });
 
 // 纯函数回归：本地 KEV 快照停在 2026.11.09，而目录里按 dateAdded 落在 2026 年的微软 Office 已有 5 条
@@ -628,20 +784,20 @@ test("chat：mode=on 不得把未经 KEV 确认的编号说成在野利用", asy
   if (SKIP_LLM) return t.skip("SKIP_LLM=1");
   const d = await postChat("最近有哪些已被确认在野利用的 Apache 产品漏洞？", { mode: "on" });
   const a = String(d.answer);
-  // 逐句判：句子里出现"在野利用/已被利用"级别的断言 + 具体编号，就必须同时给出 KEV 收录日期
-  // 例外词得包含否定式写法。2026-11-12 线上实测踩过一次判分误伤：模型写的是
-  // "CVE-2026-119618 ……目前尚无公开的在野利用报告，且未进入 CISA KEV 目录，因此不满足'已被确认
-  // 在野利用'的条件"——这恰恰是我们要的表述，却因为句子里有"在野利用"四个字被判成违规。
-  const bad = a.split(/(?<=[。；;\n])/).filter((s) =>
-    /CVE-\d{4}-\d{4,7}/i.test(s) && /在野|已被利用|确认利用|active exploitation/i.test(s)
-    && !/20\d\d-\d\d-\d\d/.test(s)
-    && !/未经|无法确认|不确定|未见|不属于|尚无|未进入|不在|不满足|没有公开|无公开/.test(s));
+  // 判分尺子在文件顶部（KEV_NEGATION / kevViolations），例外词的来历与那两次误伤记在那里。
+  // 这里只负责：Task 4 注入之后模型会列出更多"没进 KEV"的候选并否定掉，那种正确表述不得判红。
+  const bad = kevViolations(a);
   assert.equal(bad.length, 0, `在野利用断言缺少 KEV 日期：${bad.join(" / ").slice(0, 260)}`);
 });
 
 // 缺符号时必须走 runner 真正的 skip。原来这个 helper 只 console.warn 就 return，
 // 于是"kb.ts 的导出名改了 / 动态导入抛错"被记成 pass（评审 Important 1：本轮修的就是这个假跳过）。
 // 用法固定成 `if (!sym) return t_skip(t);`——静默绿与显式跳过在计数里必须是两回事。
-function t_skip(t, why = "本地 Node 不支持直接导入 .ts，跳过纯函数用例") { return t.skip(why); }
+// 跳过理由必须带上真正的失败原因：只写"Node 不支持 .ts"会把"导入抛了别的错"也一并盖成环境问题，
+// 而盖住原因的 skip 与假绿在计数上看起来一模一样（Task 3 评审的第 1 条 Important 就是这条）。
+// 跳过理由与 t_skip 都在这里；tsImportError 声明在文件前面的加载块旁边（catch 体要写它）。
+function t_skip(t, why = tsLoaded
+  ? "模块可导入但被测符号未导出——是没实现，不是本机跑不了"
+  : tsImportError ? `导入 functions/lib/*.ts 失败：${tsImportError}` : "本地 Node 不支持直接导入 .ts，跳过纯函数用例") { return t.skip(why); }
 
 console.log(`SecCopilot 回归测试目标站点：${SITE}${SKIP_LLM ? "（已跳过 LLM 用例）" : ""}`);
