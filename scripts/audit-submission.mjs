@@ -35,6 +35,17 @@ const SECRET_PATTERNS = [
 ];
 
 /**
+ * 文本卫生判据：不报错、但评委看得见的东西。
+ * 2026-11-16 实测加进来的：为了把历史推上 GitHub 做了一次 rebase，GitHub 建仓时自动生成的
+ * Initial commit 与我们首个提交的 README 冲突，一段冲突标记未解决就落进最终树，挂在公开仓库
+ * 首页底部。它不让任何命令失败——`tsc`、`npm run build`、回归套件全绿——所以只能靠这条判据抓。
+ * 判据本身用运行时拼接构造，理由与下面的样本一样：这个脚本会扫自己的 blob。
+ */
+const HYGIENE_PATTERNS = [
+  ["conflict_marker", new RegExp("^(?:" + "<".repeat(7) + " |" + ">".repeat(7) + " )", "m")],
+];
+
+/**
  * 绝对不该出现在提交包里的路径。
  * `dev/` 那条只挡留档类扩展名，**不挡 `dev/README.md`**——它是 .gitignore 里显式放行的
  * 说明文件（`!dev/README.md`），第一版规则顺手把 `.md` 一起挡了，于是审计脚本把自己的
@@ -79,6 +90,20 @@ function selfcheck() {
     const hit = re.test(samples[name]);
     if (!hit) { console.log(`MISS  ${name} 抓不到自己的样本`); bad++; }
     else console.log(`ok    ${name}`);
+  }
+  // 文本卫生判据也要两个方向都钉住。样本同样运行时拼接——写死就把这个脚本自己判成"有冲突标记"。
+  const conflictSample = "<".repeat(7) + " HEAD\n正文\n" + ">".repeat(7) + " a7ed77d (chore: 建立 git 仓库)\n";
+  const benign = [
+    "标题\n======\n下划线式标题是 Markdown 合法写法，不是冲突标记",
+    "箭头 -> 与中文破折号 ——：都不该命中",
+    "README 里引用一段 diff：'+' 开头行、'-' 开头行",
+  ];
+  for (const [name, re] of HYGIENE_PATTERNS) {
+    if (!re.test(conflictSample)) { console.log(`MISS  ${name} 抓不到冲突标记样本`); bad++; }
+    else console.log(`ok    ${name}`);
+    for (const s of benign) {
+      if (re.test(s)) { console.log(`FALSE-POSITIVE ${name} 误伤：${s.split("\n")[0]}`); bad++; }
+    }
   }
   // 顺手钉住"本脚本自己不命中"，否则下一次有人把样本改回字面串，又要靠人工发现。
   const selfBlob = readFileSync(fileURLToPath(import.meta.url), "utf8");
@@ -135,6 +160,9 @@ for (const e of packed) {
   const blob = git(["cat-file", "blob", e.oid]);
   for (const [name, re] of SECRET_PATTERNS) {
     if (re.test(blob)) { report.push(["SECRET", e.path, name]); hits++; }
+  }
+  for (const [name, re] of HYGIENE_PATTERNS) {
+    if (re.test(blob)) { report.push(["HYGIENE", e.path, name]); hits++; }
   }
   if (blob.length > 2 * 1024 * 1024) { report.push(["SIZE", e.path, `${(blob.length / 1024 / 1024).toFixed(1)} MB > 2MB`]); hits++; }
 }
