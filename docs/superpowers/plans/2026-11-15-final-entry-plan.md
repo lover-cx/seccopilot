@@ -237,3 +237,27 @@ npm run submit:audit
 | `e027dc2` | 第 10 条缺陷 + `MODE=off` 首次采样入库 + 撤回两处旧归因（发布通道、描述符台账） |
 | `57923ca` | `prepare_site` 草稿 `11f929b1` 的 `verify_artifact` 通过记录 |
 | （本文件所在提交） | 收尾方案定稿 + 冲刺计划里 Task 3 接口与 Task 4 第三个失效面的补写 |
+
+---
+
+## 附 B：11-16 仓库公开实测（含一次 rebase 带来的后果）
+
+- **仓库已公开**：<https://github.com/lover-cx/seccopilot>。API 实测 `private: false`、`default_branch: main`、`pushed_at: 2026-11-16T05:43:18Z`；远端 `main` = 本地 `ce23afa`。可达性：`api.github.com` 直连 200；`github.com` 页面本机直连 curl 失败（exit 56）、走代理 `127.0.0.1:7897` 返回 200——**是本机出口问题，不是评委侧问题**（未登录可见性由 API 的 `private:false` 证实）。
+- **提交哈希全部重映射（rebase 是人做的，不是我做的）**：新链底部多出一个根提交 `1218b38 "Initial commit"`（`parents=[]`，内容只有 `README.md` 一行 `# seccopilot`）——形状与"GitHub 建仓时勾了自动加 README"一致。33 个提交，旧链 32 个的哈希全部脱离祖先链但对象仍在（`git cat-file -t 1e0bb9f` = commit）。本文档与 README/作品帖引用的旧锚点按 subject 对应到新链：
+
+  | 旧 | 新 | 当时做了什么 |
+  | --- | --- | --- |
+  | `e027dc2` | `dbc054b` | 记第 10 条缺陷 + 两处旧归因撤回 |
+  | `57923ca` | `18a070a` | 草稿 `11f929b1` 的 `verify_artifact` 通过记录 |
+  | `9a0248e` | `c9354e1` | 审计脚本不再被自己的文档判红 |
+  | `423bd52` | `cbad1c3` | 撤回"包哈希 = 内容指纹" |
+  | `5db5f19` | `6dd60e3` | 提交物口径按赛题页 532536 重写 |
+  | `6e9e904` | `3bcd929` | 作品帖"怎么用 5 步"改成线上实测界面 |
+  | `1e0bb9f` | `ce23afa` | 计划文档不写判据完整字面串 |
+
+  **纪律第 4 条在此的用法：旧哈希不回填**（它们记录的是当时测量所依据的那次提交），重映射由这张表承担；今后新写的回执一律用新链哈希。包 sha256 也随 HEAD 变了——`8fd6308279479ec8…` 是 `1e0bb9f` 那次的值，换 `ce23afa` 后必然不同，这正是脚本输出里写明的语义。
+- **rebase 把一段冲突标记带进了公开仓库（本轮已修）**：`README.md` 末尾多出 `>>>>>>> 5772364 (chore: 建立 git 仓库与忽略规则…)`——GitHub 那份 `# seccopilot` 与我们第一个提交的 README 冲突未解决就落进了最终树。它不会让任何命令报错，却挂在评委看到的仓库首页底部。教训：**push 前后各扫一次冲突标记**（`grep -rn "^\(<<<<<<<\|=======\|>>>>>>>\)"`），本轮删除后全仓复扫零命中。
+- **顺手抓到两处会被照抄的错**（都在作品帖"附：30 秒复现"）：① `cp data/.env.example data/.env` 的注释写 `SUPABASE_URL / SUPABASE_KEY`，真实契约是 `APP_SUPABASE_URL / APP_SUPABASE_ANON_KEY / DASHSCOPE_API_KEY`（`SUPABASE_` 前缀是平台保留名，`README.md:41`），照抄必挂；② 那条 `SKIP_LLM=1 npm test` 在 cmd.exe 里静默不执行（第 0b 节记过的那类事故），已换成 `npm run test:offline`，并把免依赖复现路径写进 README 与作品帖。
+- **免依赖复现已核到 import 层**：`package.json:17-21` 的 `test:offline` / `submit:*` 全是 `node scripts/...`，不调任何 npm 安装的 bin；`scripts/run-offline-tests.mjs` 只 import `node:child_process`，`scripts/regression.test.mjs` 只 import `node:test` + `node:assert/strict`。
+- **仓库内容实测**：远端 `data/` 只有 `.env.example`、`SETUP.md`、`requirements.txt` 与 `.py`，**无 `.env`**；`docs/superpowers/{plans,specs}` 已随仓库公开（`docs/superpowers/` 公开与否原本是判断题，因全树审计命中 0 才成立；理由见第五节"评委视角"第 2 条——过程证据本身就是这份作品最值钱的部分）；全树审计 `npm run submit:audit -- --include-plans` 命中 0。
+- **仍待办**：DashScope key 未轮换（不是拦路项）。顺序：**控制台建新 key → Qoder Sites Settings 里替换 `DASHSCOPE_API_KEY` → 线上打一条 `?action=chat` 验通 → 本地 `data/.env` 跟进 → 最后才吊销旧 key**；先吊后换会让线上 Function 立刻 500。

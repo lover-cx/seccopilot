@@ -4,6 +4,8 @@
 
 在线地址：<https://seccopilot-kpa8w0w9u7e.qoder.zone>
 
+代码仓库：<https://github.com/lover-cx/seccopilot>（公开；含全部评测留档 `docs/eval-archive/` 与计划账本 `docs/superpowers/`；不含 `data/.env` 与 129 MB 批量数据）
+
 ## 功能特性
 
 - **智能问答（RAG）**：向量检索定位权威条目，大语言模型基于检索内容作答，每条回答附可点击来源
@@ -75,6 +77,8 @@ npm test                     # 对线上站点跑回归套件（node --test）
 SITE=http://127.0.0.1:8000 npm test      # 对仓库当前源码跑同一套回归
 SKIP_LLM=1 npm test          # 只跑只读/纯函数用例，不调用大模型、零费用
 ```
+
+**只想读代码、验证数字，可以不装依赖也不配密钥**：`npm run test:offline`（Node 24 即可）内部强制 `SKIP_LLM=1`，回归链路只 import `node:test`、`node:assert/strict`、`node:child_process`——`scripts/run-offline-tests.mjs` 与 `scripts/regression.test.mjs` 里没有任何第三方依赖，用例打的是线上站点。`npm run submit:audit` 只需要 git。要跑 `npm run check:function`（tsc）或 `npm run build` 才需要 `npm ci`。
 
 ### 6. 构建部署
 
@@ -180,4 +184,4 @@ GET  /functions/v1/app?action=stats
 ## 许可证
 
 MIT License
->>>>>>> 5772364 (chore: 建立 git 仓库与忽略规则，先挡住 data/.env 与 129 MB 数据目录)
+

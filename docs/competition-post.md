@@ -2,6 +2,7 @@
 
 > 2026 Qoder 高校创造力大赛 · StudyHack 学习科研赛道（天池赛题 **532536**）
 > 在线体验：https://seccopilot-kpa8w0w9u7e.qoder.zone
+> 代码仓库：https://github.com/lover-cx/seccopilot （公开，含全部评测留档 `docs/eval-archive/` 与计划账本 `docs/superpowers/`，不含密钥与 129 MB 批量数据）
 > 一句话：把 CVE 漏洞库、MITRE ATT&CK、CWE 弱点目录、arXiv 安全论文接进一个问答助手，每条回答都能点开原始权威页面。
 > 本文数据截至 **2026-11-15**；凡标"本地 harness"的数字都是未发布版本的测量，不是线上成绩。
 
@@ -278,9 +279,13 @@ DashScope 兼容模式即使开了搜索，响应里也没有 `search_info`。�
 ## 附：30 秒复现
 
 ```bash
-git clone <仓库地址> && cd seccopilot
+git clone https://github.com/lover-cx/seccopilot.git && cd seccopilot
+
+# 只想读代码、核验我们发布的数字：不用装依赖、不用配密钥
+npm run test:offline                                       # 内部强制 SKIP_LLM=1，打线上站点；cmd / PowerShell / Git Bash 同一条命令
+
 npm install
-cp data/.env.example data/.env     # 填 SUPABASE_URL / SUPABASE_KEY / DASHSCOPE_API_KEY
+cp data/.env.example data/.env     # 填 APP_SUPABASE_URL / APP_SUPABASE_ANON_KEY / DASHSCOPE_API_KEY
 npm run build && npm run dev       # 前端
 
 # 本地起 Function：Node 24 直接跑 TS，不需要装 Deno。代理必须自己注入，见下一段
