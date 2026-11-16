@@ -30,10 +30,14 @@ function readDotEnv(file: string): Record<string, string> {
 }
 
 const dot = fs.existsSync(`${ROOT}data/.env`) ? readDotEnv(`${ROOT}data/.env`) : {};
+// 显式传进来的环境变量必须优先：sprint 计划 Task 5 Step 6 用
+// `APP_SUPABASE_URL=https://127.0.0.1:9 ... node dev/function-node.ts` 制造"上游不可达"来验收 502，
+// 而原先写的是 `dot.SUPABASE_URL ?? ""`——data/.env 在时它永远赢，那条命令静默无效，
+// 测出来的 502/200 其实是真后端的数（计划片段自己的缺陷，11-16 实测确认）。
 const ENV: Record<string, string> = {
-  APP_SUPABASE_URL: dot.SUPABASE_URL ?? "",
-  APP_SUPABASE_ANON_KEY: dot.SUPABASE_KEY ?? "",
-  DASHSCOPE_API_KEY: dot.DASHSCOPE_API_KEY ?? "",
+  APP_SUPABASE_URL: process.env.APP_SUPABASE_URL ?? dot.SUPABASE_URL ?? "",
+  APP_SUPABASE_ANON_KEY: process.env.APP_SUPABASE_ANON_KEY ?? dot.SUPABASE_KEY ?? "",
+  DASHSCOPE_API_KEY: process.env.DASHSCOPE_API_KEY ?? dot.DASHSCOPE_API_KEY ?? "",
 };
 
 (globalThis as any).Deno = {

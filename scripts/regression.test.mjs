@@ -64,14 +64,25 @@ test("判分尺子 kevViolations：未给日期的断言判红，否定式和已
 });
 
 // ── 1. 知识库统计 ────────────────────────────────────────────────────────────
+// aggregateStats 的纯函数用例放在文件后面的动态导入块之后：测试体在注册时就会求值，
+// 放在 `let aggregateStats` / `let routesImportError` 之前会撞 TDZ（11-16 实测报
+// "Cannot access 'routesImportError' before initialization"，看着像实现有问题，其实是位置）。
 test("stats 返回完整计数", async () => {
   const d = await get("stats");
-  assert.ok(Number.isInteger(d.total) && d.total > 0, "total 应为正整数");
+  // 契约变更（Task 5 / #25）：某一类没统计到时回 null 并进 degraded，不再兜成 0。
+  // 所以这里先确认"健康站点不该有 null"，再把求和只按数字项算——
+  // 旧写法 Object.values(...).reduce 会把 null 当 0 加进去，于是"上游挂了"和"这一类真是 0 条"
+  // 在断言里长得一样，11-16 那轮 4530 ≠ 5397 的红就是这么被读成"数据少了 867 条"的。
+  assert.ok(Array.isArray(d.degraded), "响应应带 degraded 列表（哪些分类没统计到）");
+  const nums = Object.entries(d.categories).filter(([, v]) => typeof v === "number");
+  assert.equal(d.degraded.length, Object.keys(d.categories).length - nums.length, "degraded 应与 null 分类一一对应");
+  assert.equal(nums.length, Object.keys(d.categories).length, "健康站点不应有分类为 null");
+  assert.ok(Number.isInteger(d.total) && d.total > 0, `total 应为正整数，实际 ${JSON.stringify(d.total)}`);
   // 分类会随数据扩充增加（cwe、paper 已加入），因此按返回的键求和，不再写死分类列表
   for (const c of ["cve", "attack", "cwe", "paper"]) {
     assert.ok(c in d.categories, `categories 缺少 ${c}`);
   }
-  const sum = Object.values(d.categories).reduce((a, b) => a + b, 0);
+  const sum = nums.reduce((a, [, v]) => a + v, 0);
   assert.equal(sum, d.total, `分类求和 ${sum} 应等于 total ${d.total}`);
   assert.ok(d.categories.attack >= 800, "ATT&CK 数据应已导入");
   assert.ok(d.categories.cve >= 1700, "KEV 在野利用漏洞应已导入");
@@ -349,6 +360,9 @@ let kevLookup = null;
 let kevScopeMatches = null;
 let kevDocs = null;
 let kevCatalog = null;
+// Task 5：stats 的聚合判据是纯函数（routes.ts 里只有这一个不发请求的导出），单独一个 try——
+// 混进 chat.ts 那个 try 里会让"routes.ts 改了导出名"把整片 KEV 用例一起拖成"本机跑不了"。
+let aggregateStats = null;
 // 必须在 try 之前声明：catch 体在模块顶层求值时就跑，放到文件末尾的 let 会撞 TDZ。
 let tsImportError = "";
 // 区分两种跳过：环境问题（Node 读不了 .ts）与开发状态（模块能导入但符号还没导出＝未实现）。
@@ -371,6 +385,49 @@ try {
   kevCatalog = kb.kevCatalog;
   tsLoaded = true;
 } catch (e) { tsImportError = String(e?.message ?? e).split("\n")[0].slice(0, 200); /* 导入失败→纯函数用例显式跳过，理由写进 skip 消息 */ }
+
+// routes.ts 单独导入：它 import kb.ts，但 kb.ts 在模块加载期不发请求，所以这一步不花钱、不联网。
+// 失败原因要单独留着——把"aggregateStats 还没导出"报成"本机 Node 读不了 .ts"是 Task 3 评审点过的假跳过。
+let routesImportError = "";
+try {
+  const rt = await import("../functions/lib/routes.ts");
+  aggregateStats = rt.aggregateStats;
+} catch (e) { routesImportError = String(e?.message ?? e).split("\n")[0].slice(0, 160); }
+
+test("aggregateStats：上游失败不得变成 0 条", (t) => {
+  if (!aggregateStats) {
+    return t_skip(t, routesImportError
+      ? `导入 functions/lib/routes.ts 失败：${routesImportError}`
+      : "aggregateStats 未导出——是还没实现，不是本机跑不了");
+  }
+  const C = ["cve", "attack", "cwe", "paper", "general"];
+  // ① 健康：求和与 total 一致，degraded 为空
+  const ok = aggregateStats(5397, [1774, 867, 956, 1800, 0], []);
+  assert.equal(ok.status, 200);
+  assert.deepEqual(ok.data.categories, { cve: 1774, attack: 867, cwe: 956, paper: 1800, general: 0 });
+  assert.deepEqual(ok.data.degraded, []);
+  // ② paper 请求失败 → 必须是 null，不是 0（0 会被读成"这一类没有数据"）
+  const partial = aggregateStats(5397, [1774, 867, 956, null, 0], ["paper"]);
+  assert.equal(partial.data.categories.paper, null, "失败分类必须显式 null");
+  assert.notEqual(partial.data.categories.paper, 0);
+  assert.deepEqual(partial.data.degraded, ["paper"]);
+  assert.equal(partial.status, 200, "部分失败仍是 200，但缺口可见");
+  // ③ total 也失败 → null，且不得让前端把 null 当 0 求和
+  const noTotal = aggregateStats(null, [1774, 867, 956, 1800, 0], ["total"]);
+  assert.equal(noTotal.data.total, null);
+  assert.ok(noTotal.data.degraded.includes("total"));
+  // ④ 全失败 → 502，不给"看起来正常"的 0
+  const dead = aggregateStats(null, [null, null, null, null, null], ["total", ...C]);
+  assert.equal(dead.status, 502);
+  assert.equal(dead.data.error, "upstream_unavailable");
+  // ⑤ total 失败但分类都在：这不是全挂，必须 200 且 degraded 带 total——
+  //    11-16 本机实测过这一形状（total:0 而 categories 求和 5397），旧代码把它当成两个可信数字。
+  //    计划 Step 1 的样本没有这一条：④ 只测"全 null→502"，漏了"只缺 total"，
+  //    把 502 条件写成 `total === null` 也能过①②③④，所以这里补一条把它钉住。
+  const totalOnlyDown = aggregateStats(null, [1774, 867, 956, 1800, 0], ["total"]);
+  assert.equal(totalOnlyDown.status, 200, "只缺 total 不是全站不可用，不得报 502");
+  assert.equal(totalOnlyDown.data.total, null, "total 没取到就是不知道，不得回落到求和或 0");
+});
 
 test("localTimeGapFacts：只在本地库确实缺该时间窗条目时兜底", (t) => {
   if (!gapFacts) return t_skip(t);
