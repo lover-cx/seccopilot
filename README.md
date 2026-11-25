@@ -133,7 +133,9 @@ GET  /functions/v1/app?action=attack&tactic=<战术>&technique=<T 编号>
 GET  /functions/v1/app?action=stats
 ```
 
-`?action=stats` 返回 `{ total, categories, degraded }`，其中**取不到的计数是 `null` 而不是 `0`**：上游超时、HTTP 非 200、`content-range` 头解析不出来都记为"不知道"，并把该项列进 `degraded`；只有"total 与五个分类全未知"才返回 502 `{"error":"upstream_unavailable"}`。前端 `StatsPanel` 把 `null` 渲染成 `—`，部分失败给黄条"部分分类未能统计：…（显示为 —，不是 0）"，整段不可用时按已知分类补齐五格而不是留空列表。
+**直接 curl 这些接口要带来源头**：平台网关对 POST 校验 Origin，缺了就 `403 {"code":"sites_gateway_origin_forbidden"}`（2026-11-25 实测：不带 `Origin` 打 `?action=chat` 直接 403 / 0.29 s，补上即 200 / 6.1 s；GET 不校验，容易误判成"接口挂了"）。回归套件里那份就是这个写法——`scripts/regression.test.mjs:23` 的 `ORIGIN_HEADERS = { Origin: SITE, Referer: \`${SITE}/\` }`。
+
+`?action=stats` 返回 `{ total, categories, degraded }`（**本段描述仓库当前源码——线上 11-12 发布版还没有 `degraded`，上游故障时它静默返回 0，见 `docs/superpowers/plans/2026-11-15-final-entry-plan.md` 附 C**），其中**取不到的计数是 `null` 而不是 `0`**：上游超时、HTTP 非 200、`content-range` 头解析不出来都记为"不知道"，并把该项列进 `degraded`；只有"total 与五个分类全未知"才返回 502 `{"error":"upstream_unavailable"}`。前端 `StatsPanel` 把 `null` 渲染成 `—`，部分失败给黄条"部分分类未能统计：…（显示为 —，不是 0）"，整段不可用时按已知分类补齐五格而不是留空列表。
 
 `mode` 缺省为 `auto`。自动策略下，本地命中不足或问题涉及时效（"最新""刚披露""CVE-2026-"等）才会联网，避免不必要的检索开销与权威引用被污染。
 

@@ -264,3 +264,55 @@ npm run submit:audit
 - **仓库内容实测**：远端 `data/` 只有 `.env.example`、`SETUP.md`、`requirements.txt` 与 `.py`，**无 `.env`**；`docs/superpowers/{plans,specs}` 已随仓库公开（`docs/superpowers/` 公开与否原本是判断题，因全树审计命中 0 才成立；理由见第五节"评委视角"第 2 条——过程证据本身就是这份作品最值钱的部分）；全树审计 `npm run submit:audit -- --include-plans` 命中 0。
 - **撤回一句本文件第七节的老写法**（11-16 在新链上重跑才发现）：那里写"实测不成立——`git log --all -G'sk-[A-Za-z0-9]{20,}'` 0 命中"。**在新链上这条命令实测 2 命中**（`pem_private_key` 那条同样 2 命中，`LTAI` 0 命中）。两条都是审计脚本自己的合成样本：`1b0b07c` 把一个假 key 字面串（`sk-` 加 28 位 `0123456789` 打头的小写字母数字）写进 `samples`，`c9354e1` 改成运行时 `join()` 拼接后当前 blob 不再命中（所以**HEAD 树审计仍是 0 命中**，与历史扫描是两个口径）。**这一段自己也曾犯过同一个错**：初稿在这里把那条假 key 逐字写了出来，全树审计立刻把它判成 `dashscope_sk` 命中——所以这里只描述形状、不复写字面串，与脚本注释里"刻意不写完整字面串"是同一条纪律。结论不变、理由要改：那把真 key 从未进过任何提交，进过历史的是**假样本**。可预见的后果：GitHub 公开仓库的 secret scanning 可能对这两个历史 blob 报"检测到凭据"，处置是标记为 false positive，**不要为此改写历史**——历史里的合成样本正是"判据自己被抓到"的证据，删掉它等于删掉那次教训。今后引用这条扫描必须写清"树口径"还是"历史口径"。
 - **仍待办**：DashScope key 未轮换（不是拦路项）。顺序：**控制台建新 key → Qoder Sites Settings 里替换 `DASHSCOPE_API_KEY` → 线上打一条 `?action=chat` 验通 → 本地 `data/.env` 跟进 → 最后才吊销旧 key**；先吊后换会让线上 Function 立刻 500。
+
+---
+
+## 附 C：2026-11-25 复核（停摆 9 天后重开，含一次线上知识库不可达事故）
+
+本文件正文写于 11-15，那些日期**不回填**（纪律第 4 条）；这一节是重开当天实测的账面偏差与事故记录。
+
+### 账面与真实的偏差
+
+- **时间漂移**：`date` 实测 **2026-11-25 13:01 周三**，距 11-30 18:00 截止 **5 天 5 小时**，不是本文件开头写的"约 15 天"。
+- **11-19 那班"必须成功"的车没赶上**：`get_site` → `project.updated_at = 2026-11-12T05:08:51Z`、`hasPublishedContent: true`、封面 URL 里的产物仍是 `deployments/01a1ce27-…` → **线上跑的还是 11-12 那版**。
+- **代码侧其实已经做完**：Task 4 `c393681`、Task 5 `5cf1470`、Task 6 `0a0fe5f`、Task 7 `42b9068` 都在 HEAD 上，提交信息逐条写着"本机已验证、线上未发布"。仓库此前领先远端 8 个提交（附 B 那句"远端 main = 本地 HEAD"到 11-25 已经不成立，本轮重新对齐）。
+- **DashScope key 也没轮换过**：`get_site(include:[secrets])` 里四把密钥 `updated_at` 全停在 11-09、`sync_state: synced`。第七节那件待办仍挂着。
+
+### P0：线上知识库层不可达（本轮发现，尚未修复）
+
+全部是当天实跑，不是推测：
+
+- `GET ?action=stats` 在 12:56 还是 `{"total":5397,…}`（2.56 s），13:00 起 **6/6 次返回 `total: 0`**，加 cache-buster 再打 6 次仍是 0，耗时 0.30–0.50 s。`?action=cve&q=Fortinet`、`?action=attack&tactic=初始访问` 同样返回 `{"results":[]}`。
+- `npm run test:offline` = **39 tests / 13 pass / 7 fail / 19 skipped**（用例数从 11-16 的 34 涨到 39 是 Task 4~7 新加的）。7 条红**全在数据库路径**：`stats 返回完整计数`、`attack：14 个战术`、`attack：technique 精确查询 T1059`、`cve：按关键词与编号检索`、`cve：severity 与 cvss 元数据`、`cve：KEV 条目可按编号检索`、`cve：厂商关键词命中多条`；13 条非数据库用例全绿 → **基础设施故障，不是代码回归**。
+- chat 链路本身正常：`mode=on` 返回 430 字 / 0 本地来源 / 4 网络来源 / `coverage: web`，`mode=off` 返回 23 字 / 0 来源。生成与 DashScope key 都好，只有 Supabase 那一支空。
+- Function 请求日志（`get_function_logs?type=requests`，05:00Z 起）显示这些 GET 全是 **200 / 21–23 ms**。21 ms 连一次跨境 TLS 往返都不够 → 边界上根本没打到库，异常被 11-12 那版的 `catch { return 0 }` 吞成合法的 200 空值。
+
+**根因假设（未确认——我没有你的 Supabase 登录，dashboard 打开是 `Sign in` 页）**：实例级不可达，最像免费版**长时间不活动自动暂停**。最后一次真实写库是 11-10 的 `import_phase2.py`，最后一次实测读通是 11-16，间隔 9~15 天。已排除三项：① 平台事故——`https://status.supabase.com/api/v2/summary.json`（11-25 05:04Z 抓取）返回 `All Systems Operational` / `indicator: none`，唯一在办事件是"API endpoint degradation observed Nov 13-16"、状态 `monitoring`，窗口与今天不同；② 凭据被删改——四把 Secret 都在且 `synced`；③ 平台网关——403 只在缺 `Origin` 头时出现（见 README API 段），带上就打通。唯一入口是**你登录 dashboard 看 `hmbcuccbudrazccqmmrp` 的状态，PAUSED 就 Restore**（暂停不清数据，通常几分钟回来）。
+
+**这条事故正是第 5 条缺陷的现场版**：`catch { return 0 }` 把一次真停机伪装成"库里没数据"，评委和我们自己都拿不到任何信号。Task 5 的 `degraded`/`null`/502 已经提交但没发布——"未发布的修复不是成绩"这句话，今天是以故障的形式兑现的。也正因为如此，恢复之后第一件事不是发帖，是**发布**。
+
+### 一个会影响重建的独立故障（不影响线上）
+
+本机现在到不了 `*.supabase.co`：直连 `tcp/443` CLOSED；走 Clash `127.0.0.1:7897` 是 `curl: (35) schannel: failed to receive handshake`，同一个代理打 `example.com` 是 200；平台域 `aws01.supabase.co` 同样握手失败 → **节点/规则问题，不是代码问题**。dashboard 恢复后若要跑 `data/reimport.py` / `import_phase2.py`，先换 Clash 节点，否则脚本会在同一个地方翻车。
+
+### 恢复链已核到文件级（真丢数据也能重建，且不再烧 embedding）
+
+`data/kb_raw.json` 12.5 MB（11-09）、`data/knowledge_base.json` 12.6 MB（11-09）、`data/phase2_raw.json` 6.8 MB（11-10）、`data/phase2_emb.jsonl` 103 MB（11-10）都在本地磁盘，配 `supabase-schema.sql` 就是完整重建链；`import_phase2.py` 按语义主键跳过已存在记录、向量直接读 `phase2_emb.jsonl` 缓存，所以重建不重复计费。这 4 个文件全在 `.gitignore` 的 `data/*` 白名单之外，不进仓库也不进提交包。
+
+### 新排期（11-25 → 11-30 18:00，替换第三节的表）
+
+| 日期 | 做什么 | 完成判据 | 谁 |
+| --- | --- | --- | --- |
+| **11-25 今天** | dashboard 看状态 → PAUSED 就 Restore；恢复后我重打 `stats` + `npm run test:offline` + `node scripts/probe-online-kev.mjs`；**你把首帖发到 532536 论坛**（帖内数字全部标"11-16 本地 harness 口径"） | 线上 `stats` 回到 5,397、那 7 条红转绿；帖子链接可打开且站点首页 200 | **你按 dashboard，我复测** |
+| 11-26 | **发布班车——唯一硬死线**：新 actionId、`prepare_site` 不传 projectId、只声明那 3 个密钥 → `publish_site` → `get_publish_status` 到 `published: true` | 线上 `?action=stats` 响应里出现 `degraded` 字段＝新代码在线；三道闸门线上可观测 | **是按发布键** |
+| 11-26~27 | 发布后线上全量复测：`npm test`（全量）+ `node scripts/eval.mjs` + `node scripts/probe-online-kev.mjs`；两版留档，旧版标 measured_on | 每个数字能指到一份入库件 | 否 |
+| 11-27~28 | 数字同步进 README / 作品帖 / demo-script；DashScope key 按第七节顺序轮换；补 6 张过程截图 | `npm run submit:audit -- --include-plans` 命中 0 | **你轮换 + 截图** |
+| 11-28~29 | 发更新版作品帖（线上数字）；此后**不再改 `functions/**`** | 帖内数字与仓库入库件一致、可被评委复算 | **发帖** |
+| 11-30 | 18:00 前确认最终帖可见，留 6 小时缓冲 | 帖子链接 + 回执（HEAD 号 + 时间） | **确认** |
+
+**如果 11-26 发不出去**（`verify_artifact` 有队列侧超时史，且同一 actionId 重试只会拿回那个已死掉的 op，必须换新 UUID）：作品帖里所有 accuracy 数字一律写成"本地 harness 口径 + 复现命令"，不写任何"已修复/已上线"。宁可数字难看，也不发不可复算的话。
+
+### 防复发
+
+实例恢复后建议加一条每日 keep-alive（打一次 `?action=stats`，既让免费实例不因不活动被暂停，也顺带当存活探针：返回 `total: 0` 就是告警）。这条要落到 Qoder 的定时任务，属于新增外部副作用，**等你说建再建**，我不自行创建。
+

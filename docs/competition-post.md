@@ -322,6 +322,11 @@ git clone https://github.com/lover-cx/seccopilot.git && cd seccopilot
 # 只想读代码、核验我们发布的数字：不用装依赖、不用配密钥
 npm run test:offline                                       # 内部强制 SKIP_LLM=1，打线上站点；cmd / PowerShell / Git Bash 同一条命令
 
+# 要手动 curl 线上接口，POST 必须带来源头，否则平台网关直接 403 sites_gateway_origin_forbidden（GET 不校验，11-25 实测）
+curl -X POST "https://seccopilot-kpa8w0w9u7e.qoder.zone/functions/v1/app?action=chat" \
+  -H "content-type: application/json" -H "Origin: https://seccopilot-kpa8w0w9u7e.qoder.zone" \
+  -d '{"question":"用一句话说说 CVE-2021-44228","mode":"off"}'          # 这两行续行是 bash 写法，cmd 里请用上面那条 npm run test:offline
+
 npm install
 cp data/.env.example data/.env     # 填 APP_SUPABASE_URL / APP_SUPABASE_ANON_KEY / DASHSCOPE_API_KEY
 npm run build && npm run dev       # 前端
